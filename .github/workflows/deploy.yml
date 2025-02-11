@@ -17,13 +17,13 @@ jobs:
           python-version: 3.12.1
 
       - name: Install Dependencies
-        run: pip install -r requirements.txt
-
-      - name: Install AWS CLI
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
+          pip install --upgrade pip
+          pip install -r requirements.txt -t .
+
+      # Verify AWS CLI Version (Using Preinstalled AWS CLI)
+      - name: Check AWS CLI Version
+        run: aws --version
 
       - name: Zip Code
         run: zip -r deployment.zip . -x "*.git*" "README.md" ".github/*"
