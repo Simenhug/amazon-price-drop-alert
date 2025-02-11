@@ -35,6 +35,6 @@ jobs:
           AWS_REGION: us-east-1
         run: |
           aws lambda update-function-code \
-          --function-name my-lambda-function \
+          --function-name amazon_price_check \
           --zip-file fileb://deployment.zip
 
