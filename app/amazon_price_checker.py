@@ -2,7 +2,7 @@ import requests
 import random
 import time
 from bs4 import BeautifulSoup
-from utils import RetryOnException
+from app.utils import RetryOnException
 
 
 PRICE_ELEMENT_SELECTOR = "#corePriceDisplay_desktop_feature_div > div.a-section.a-spacing-none.aok-align-center.aok-relative"

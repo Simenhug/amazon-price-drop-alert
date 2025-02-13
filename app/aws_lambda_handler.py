@@ -1,6 +1,6 @@
 import time
 import random
-from amazon_price_checker import AmazonPriceExtractor
+from app.amazon_price_checker import AmazonPriceExtractor
 
 # This is the entry point for the AWS Lambda
 def lambda_handler(event, context):
