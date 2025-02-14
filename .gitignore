@@ -137,3 +137,15 @@ scratch.txt
 
 # VS Code
 .vscode/
+
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+crash.log
+override.tf
+override.tf.json
+terraform.rc
+terraform.tfstate.backup
+.terraform.lock.hcl
