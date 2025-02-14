@@ -21,7 +21,7 @@ class RetryOnException:
                     return func(*args, **kwargs)
                 except self.exception as e:
                     attempt += 1
-                    print(f"Attempt {attempt} failed: {type(e).__name__}")
+                    print(f"Attempt {attempt} failed: {e}")
                     if attempt < self.retries:
                         time.sleep(self.delay)  # Optional: wait before retrying
                     else:

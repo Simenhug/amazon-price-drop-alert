@@ -1,6 +1,6 @@
 # Amazon Price Drop Alert
 
-This project tracks price drops on Amazon and sends alerts.
+This is an application that tracks price drops of selected products on Amazon and sends email alerts.
 
 ## Running the Program Locally
 

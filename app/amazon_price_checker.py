@@ -1,89 +1,83 @@
 import requests
 import random
 import time
+import os
 from bs4 import BeautifulSoup
 from app.utils import RetryOnException
 
-
-PRICE_ELEMENT_SELECTOR = "#corePriceDisplay_desktop_feature_div > div.a-section.a-spacing-none.aok-align-center.aok-relative"
-USER_AGENTS = [
-        # 🖥️ Windows User-Agents
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/115.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:92.0) Gecko/20100101 Firefox/92.0",
-
-        # 🍏 macOS User-Agents
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_5_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/115.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14) AppleWebKit/537.36 (KHTML, like Gecko) Safari/604.1.38",
-
-        # 🐧 Linux User-Agents
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/109.0",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0",
-
-        # 📱 Mobile User-Agents (Less Bot Detection!)
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (iPad; CPU OS 16_5 like Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/537.36",
-        "Mozilla/5.0 (Android 13; Mobile; rv:119.0) Gecko/119.0 Firefox/119.0",
-        "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (Linux; Android 11; SM-A715F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-    ]
+SCRAPER_API_KEY = "9a7e51a7bc21ee366e3f38dd27a2b703"
+PRICE_ELEMENT_SELECTOR = "#corePrice_feature_div"
+PRICE_WHOLE_SPAN_CLASS = ".a-price-whole"
+PRICE_FRACTION_SPAN_CLASS = ".a-price-fraction"
 
 class PriceNotFoundException(Exception):
-    pass
+    def __init__(self, original_exception=None):
+        self.original_exception = original_exception
+        super().__init__(f"Price not found. Original exception: {original_exception}")
 
 class AmazonPriceExtractor:
     
     def extract_price_from_soup(self, soup) -> str:
-        price_div = soup.select_one(PRICE_ELEMENT_SELECTOR)
-        price = None
 
-        if price_div:
-            price_span = price_div.find("span", class_="a-price-whole")
-            # print(f"Price span found: {price_span}")
-            if price_span:
-                price = price_span.get_text().strip()
-                fraction_span = price_div.find("span", class_="a-price-fraction")
-                # print(f"Fraction span found: {fraction_span}")
-                if fraction_span:
-                    price +=  fraction_span.get_text().strip()
-                    return price
-                
-        raise PriceNotFoundException()
+        try:
+            price_whole = soup.select_one(f"{PRICE_ELEMENT_SELECTOR} {PRICE_WHOLE_SPAN_CLASS}").text.strip()
+            price_fraction = soup.select_one(f"{PRICE_ELEMENT_SELECTOR} {PRICE_FRACTION_SPAN_CLASS}").text.strip()
+            return price_whole + price_fraction
+        except Exception as e:    
+            raise PriceNotFoundException(e)
+    
+    def scraper_api_proxy_builder(
+            self,
+            javascript_render: bool = True, # if the targeted URLs require rendering javascript
+            device_type: str = "mobile", # either "desktop" or "mobile", the current PRICE_ELEMENT_SELECTOR only works for mobile
+            disable_follow_redirect: bool = False,
+            country_code: str = "us",
+            binary_target: bool = False, # helpful when trying to scrape files or images. 
+            retry_404: bool = False,
+    ):
+        """
+        remember all of these options can be optional, and the proxy would simply be 
+        "scraperapi:<my-scraper-api-key>@proxy-server.scraperapi.com:8001"
+        """
 
-    def get_random_user_agent(self):
-        agent = random.choice(USER_AGENTS)
-        print(f"User-Agent: {agent}")
-        return agent
+        proxy = ""
+        if javascript_render:
+            proxy += "scraperapi.render=true."
+        if disable_follow_redirect:
+            proxy += "follow_redirect=false."
+        if binary_target:
+            proxy += "binary_target=true."
+        if retry_404:
+            proxy += "retry_404=true."
+        # by default we're scraping a mobile page, because amazon has less strict anti-scraping measures for mobile
+        proxy += f"device_type={device_type}."
+        proxy += f"country_code={country_code}" # notice not adding a period here
+        
+        proxy += f":{SCRAPER_API_KEY}"
+        proxy += "@proxy-server.scraperapi.com:8001"
+        return {"https": proxy}
 
-    @RetryOnException(exception=PriceNotFoundException)
-    def get_amazon_price_with_soup(self, url: str) -> str:
+    @RetryOnException(exception=PriceNotFoundException, retries=1)
+    def get_amazon_price_with_soup(self, url: str, debug:bool = False) -> str:
 
-        agent = self.get_random_user_agent()
 
-        # 🚀 Headers to Bypass Detection
-        headers = {
-            "User-Agent": agent,
-            "Referer": "https://www.amazon.com/",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        proxy = self.scraper_api_proxy_builder()
+        print(f"Proxy: {proxy}\n")
+        response = requests.get(url, proxies=proxy, verify=False)
+        print(f"HTTP Status Code: {response.status_code}\n")
 
-        # 🚀 Using a Session for Persistence
-        session = requests.Session()
-        session.headers.update(headers)
+        if debug:
+            # Save the response content to an HTML file
+            file_path = "webpage.html"
+            with open(file_path, "w", encoding="utf-8") as file:
+                file.write(response.text)
 
-        # 🚀 Fetch Search Results
-        response = session.get(url)
-        print(f"HTTP Status Code: {response.status_code}")
+            # Open the saved HTML file in the default web browser
+            # this only works on macOS
+            # should not be run on AWS Lambda, which is a headless Linux environment
+            os.system(f"open {file_path}")
+
         soup = BeautifulSoup(response.text, "html.parser")
-
-        price_div = soup.select_one(PRICE_ELEMENT_SELECTOR)
 
         return self.extract_price_from_soup(soup)
     
@@ -92,9 +86,7 @@ class AmazonPriceExtractor:
 if __name__ == "__main__":
     url = "https://www.amazon.com/dp/B0DPLYGYXV"
     extractor = AmazonPriceExtractor()
-    while True:
-        price = extractor.get_amazon_price_with_soup(url)
-        print(f"The price of the product is: {price}")
-        input("Press Enter to check the price again...")
-        # ✅ Random Delay to Avoid Detection
-        time.sleep(random.uniform(2, 5))
+    price = extractor.get_amazon_price_with_soup(url, debug=True)
+    print(f"The price of the product is: {price}\n")
+    # ✅ Random Delay to Avoid Detection
+    time.sleep(random.uniform(6, 10))
