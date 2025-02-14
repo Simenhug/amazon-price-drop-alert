@@ -7,11 +7,11 @@ data "aws_lambda_function" "existing_lambda" {
   function_name = "amazon_price_check"  # Replace with your actual Lambda name
 }
 
-# 🔹 EventBridge Rule to Trigger Lambda Daily at 8AM EDT
+# 🔹 EventBridge Rule to Trigger Lambda every Friday at 8AM EDT
 resource "aws_cloudwatch_event_rule" "lambda_schedule" {
   name                = "lambda-daily-trigger"
-  description         = "Triggers Lambda every day at 8AM EDT"
-  schedule_expression = "cron(0 13 * * ? *)"  # Runs daily at 13 PM UTC, which is 8AM EDT
+  description         = "Triggers Lambda every Friday at 8AM EDT"
+  schedule_expression = "cron(0 13 ? * 6 *)"  # Runs every Friday at 13 PM UTC
 }
 
 # 🔹 Attach the Lambda Function as a Target for the EventBridge Rule

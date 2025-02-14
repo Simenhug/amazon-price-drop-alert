@@ -2,6 +2,10 @@
 
 This is an application that tracks price drops of selected products on Amazon and sends email alerts.
 
+**⚠️ Important Note ⚠️**: 
+* This is a personal project and is not intended for commercial use.
+* An Amazon product webpage might be unscrappedable at any given moment for some reason. Perhaps due to repeated requests in a short period of time. It's possible that in one run you can get the price, and in the next run you get 404, and it doesn't necessarily mean there's something wrong with the code.
+
 ## Prerequisites
 ```
 # AWS CLI
@@ -58,10 +62,10 @@ To deploy a terraform change:
 ```
 cd terraform
 # requires aws cli to be properly setup
-terraform init
-terraform validate
-terraform plan
-terraform apply -auto-approve
+terraform init  # just need to run once after you setup aws cli
+terraform validate # just need to run once after you setup aws cli
+terraform plan # every time you make a change to a terraform file
+terraform apply -auto-approve # every time you make a change to a terraform file
 ```
 
 

@@ -86,6 +86,7 @@ class AmazonPriceExtractor:
     
 
 # this is only for testing locally, not how workflow is triggered in production
+# IMPORTANT: If the code is working fine but suddenly starts getting 404s, try a different amazon product
 if __name__ == "__main__":
     url = "https://www.amazon.com/dp/B0DPLYGYXV"
     extractor = AmazonPriceExtractor()
