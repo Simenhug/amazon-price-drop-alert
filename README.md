@@ -2,6 +2,31 @@
 
 This is an application that tracks price drops of selected products on Amazon and sends email alerts.
 
+## Prerequisites
+```
+# AWS CLI
+brew install awscli
+aws configure # detailed instruction please reach out to author
+
+# terraform
+brew install terraform
+
+# pyenv and virtualenv, if you don't have already
+brew install pyenv pyenv-virtualenv
+
+# set up python virtual env
+pyenv install 3.12 # the app is written with this version but other version might be fine
+pyenv virtualenv 3.12 amazon_price_checker # feel free to use a different name
+pyenv local amazon_price_checker # Make the virtual environment auto-activate in this project directory
+pyenv activate amazon_price_checker
+# optional: to deactivate later
+pyenv deactivate
+
+# install dependencies
+pip install -r requirements.txt
+
+```
+
 ## Running the Program Locally
 
 To run the program locally, use the following command:
@@ -12,11 +37,31 @@ python -m app.amazon_price_checker
 ## AWS Lambda
 
 In production, the program is powered by AWS Lambda. The Lambda handler is located in `src/aws_lambda_handler`.
+After making local changes, the steps to deploy are:
+```sh
+git add .
+git commit
+pip freeze > requirements.txt # if new libraries are introduced
+git push
+```
 
 ## Continuous Integration & Deployment
 
 Continuous Integration (CI) is performed by GitHub Actions. The configuration for GitHub Actions is in `deploy.yml`.
 
+
 ## Infrastructure Management
 
 Terraform is used for infrastructure management. In `main.tf`, a cron job is set to run the program at 8am EDT every day.
+
+To deploy a terraform change:
+```
+cd terraform
+# requires aws cli to be properly setup
+terraform init
+terraform validate
+terraform plan
+terraform apply -auto-approve
+```
+
+
