@@ -40,7 +40,8 @@ class AmazonPriceExtractor:
         "scraperapi:<my-scraper-api-key>@proxy-server.scraperapi.com:8001"
         """
 
-        proxy = ""
+        # this http:// prefix is necessary for this script to work on AWS Lambda, although not necessary for local testing
+        proxy = "http://" 
         if javascript_render:
             proxy += "scraperapi.render=true."
         if disable_follow_redirect:
