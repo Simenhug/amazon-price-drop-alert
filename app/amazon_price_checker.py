@@ -80,7 +80,9 @@ class AmazonPriceExtractor:
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        return self.extract_price_from_soup(soup)
+        price = self.extract_price_from_soup(soup)
+        print(f"Price: {price}\n")
+        return price
     
 
 # this is only for testing locally, not how workflow is triggered in production
