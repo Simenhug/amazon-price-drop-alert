@@ -10,7 +10,9 @@ This is an application that tracks price drops of selected products on Amazon an
 ```
 # AWS CLI
 brew install awscli
-aws configure # detailed instruction please reach out to author
+# aws configure is crucial to local testing and deployment to AWS
+aws configure
+# for detailed configure instruction please reach out to author
 
 # terraform
 brew install terraform
