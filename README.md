@@ -31,6 +31,9 @@ pyenv deactivate
 # install dependencies
 pip install -r requirements.txt
 
+# set up pre-commit hooks, which includes linters
+pre-commit install
+
 ```
 
 ## Running the Program Locally

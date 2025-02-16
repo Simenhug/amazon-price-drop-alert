@@ -1,6 +1,7 @@
 import functools
 import time
 
+
 class RetryOnException:
     def __init__(self, exception=Exception, retries=3, delay=1):
         """
@@ -27,4 +28,5 @@ class RetryOnException:
                     else:
                         print("Max retries reached. Raising exception.")
                         raise
+
         return wrapper
