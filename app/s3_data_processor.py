@@ -4,6 +4,8 @@ from datetime import datetime
 
 import boto3
 
+from app.amazon_url_handler import AmazonURLProcessor
+
 ID_SIZE = 16
 S3_BUCKET_NAME = "amazon-product-price-history"
 S3_PRICE_HISTORY_FILE_KEY = f"product_price_history/{datetime.today().strftime('%Y-%m-%d')}.csv"  # Organize by date
@@ -51,7 +53,9 @@ class ProductPriceProcessor:
         :param url: The URL of the product
         :return: The product ID
         """
-        product_id = hashlib.sha256(f"{product_name}{url}").hexdigest()[:ID_SIZE]
+        product_id = hashlib.sha256(f"{product_name}{url}".encode()).hexdigest()[
+            :ID_SIZE
+        ]
         return product_id
 
     def lookup_product_id(self, product_name: str, product_url: str) -> str | None:
@@ -87,6 +91,21 @@ class ProductPriceProcessor:
         :param url: The URL of the product
         :return: The product ID
         """
+        # Simplify the URL and confirm with the user
+        url_processor = AmazonURLProcessor()
+        simplified_url = url_processor.get_simplified_amazon_url(url)
+        print(f"Product {product_name} will be stored with URL {simplified_url}")
+        while True:
+            proceed = input("Do you want to proceed? (Y/n): ").strip().lower()
+            if proceed in ("", "y"):
+                break
+            elif proceed == "n":
+                print("Operation cancelled.")
+                return None
+            else:
+                print("Invalid input. Please enter 'Y' to proceed or 'n' to cancel.")
+
+        url = simplified_url
         s3_client = boto3.client("s3")
         local_file_name = "temporary_product_registry.csv"
 
@@ -121,3 +140,41 @@ class ProductPriceProcessor:
         print(
             f"Appended new product {product_name} to s3://{S3_BUCKET_NAME}/{S3_PRODUCT_REGISTRY_FILE_KEY}"
         )
+
+    def list_registered_products(self) -> None:
+        """
+        print out all the registered products in the database
+        """
+        s3_client = boto3.client("s3")
+        local_file_name = "temporary_product_registry.csv"
+        s3_client.download_file(
+            S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
+        )
+
+        with open(local_file_name, mode="r", newline="") as file:
+            reader = csv.DictReader(file)
+            next(reader)  # Skip the header line
+            for row in reader:
+                print(row)
+
+
+# to register a new product to the watch list
+if __name__ == "__main__":
+    processor = ProductPriceProcessor()
+    while True:
+        register_new = (
+            input("Would you like to register a new product to the watch list? (Y/n): ")
+            .strip()
+            .lower()
+        )
+        if register_new in ("", "y"):
+            product_name = input("Enter the product name: ").strip()
+            product_url = input("Enter the product URL: ").strip()
+            processor.register_new_product(product_name, product_url)
+        elif register_new == "n":
+            print("Exiting the registration loop.")
+            break
+        else:
+            print(
+                "Invalid input. Please enter 'Y' to register a new product or 'n' to exit."
+            )

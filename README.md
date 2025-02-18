@@ -73,4 +73,8 @@ terraform plan # every time you make a change to a terraform file
 terraform apply -auto-approve # every time you make a change to a terraform file
 ```
 
-
+## Add an Amazon product to the price drop watchlist
+in project root directory, run:
+```sh
+python -m app.s3_data_processor
+```
