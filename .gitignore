@@ -152,3 +152,6 @@ terraform.tfstate.backup
 
 # HTML files
 *.html
+
+# CSV files
+*.csv
