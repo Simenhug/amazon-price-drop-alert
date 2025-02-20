@@ -7,34 +7,42 @@ This is an application that tracks price drops of selected products on Amazon an
 * An Amazon product webpage might be unscrappedable at any given moment for some reason. Perhaps due to repeated requests in a short period of time. It's possible that in one run you can get the price, and in the next run you get 404, and it doesn't necessarily mean there's something wrong with the code.
 
 ## Prerequisites
+
+*AWS CLI*
+You will need an AWS account and AWS CLI installed on your machine. AWS free tier is sufficient for this project.
+`brew install awscli`
+then
+`aws configure # aws configure is crucial to local testing and deployment to AWS. Configure with your AWS credentials`
+
+*terraform*
+`brew install terraform`
+
+*pyenv and virtualenv* if you don't have already
+`brew install pyenv pyenv-virtualenv`
+
+set up python virtual env
 ```
-# AWS CLI
-brew install awscli
-# aws configure is crucial to local testing and deployment to AWS
-aws configure
-# for detailed configure instruction please reach out to author
-
-# terraform
-brew install terraform
-
-# pyenv and virtualenv, if you don't have already
-brew install pyenv pyenv-virtualenv
-
-# set up python virtual env
 pyenv install 3.12 # the app is written with this version but other version might be fine
 pyenv virtualenv 3.12 amazon_price_checker # feel free to use a different name
 pyenv local amazon_price_checker # Make the virtual environment auto-activate in this project directory
 pyenv activate amazon_price_checker
 # optional: to deactivate later
 pyenv deactivate
-
-# install dependencies
-pip install -r requirements.txt
-
-# set up pre-commit hooks, which includes linters
-pre-commit install
-
 ```
+
+install dependencies
+`pip install -r requirements.txt`
+
+set up pre-commit hooks, which includes linters
+`pre-commit install`
+
+*Scraper API*
+Scraper API free tier is sufficient for this project. Sign up for a free account, then add your API key to the `.env` file under the key `SCRAPER_API_KEY`.
+
+## Secrets and API Keys
+When developing locally, you can create a `.env` file in the root directory and add your secrets there. 
+In production, you can configure secrets in AWS Lambda environment variables.
+
 
 ## Running the Program Locally
 
@@ -48,9 +56,9 @@ python -m app.amazon_price_checker
 In production, the program is powered by AWS Lambda. The Lambda handler is located in `src/aws_lambda_handler`.
 After making local changes, the steps to deploy are:
 ```sh
+pip freeze > requirements.txt # if new libraries are introduced
 git add .
 git commit
-pip freeze > requirements.txt # if new libraries are introduced
 git push
 ```
 

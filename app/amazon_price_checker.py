@@ -4,10 +4,10 @@ import time
 
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
 from app.utils import RetryOnException
 
-SCRAPER_API_KEY = "9a7e51a7bc21ee366e3f38dd27a2b703"
 PRICE_ELEMENT_SELECTOR = "#corePrice_feature_div"
 PRICE_WHOLE_SPAN_CLASS = ".a-price-whole"
 PRICE_FRACTION_SPAN_CLASS = ".a-price-fraction"
@@ -20,6 +20,11 @@ class PriceNotFoundException(Exception):
 
 
 class AmazonPriceExtractor:
+    def __init__(self):
+        load_dotenv()
+        self.scraper_api_key = os.getenv("SCRAPER_API_KEY")
+        if not self.scraper_api_key:
+            raise ValueError("Scraper API Key not found in environment variables")
 
     def extract_price_from_soup(self, soup) -> str:
 
@@ -62,7 +67,7 @@ class AmazonPriceExtractor:
         proxy += f"device_type={device_type}."
         proxy += f"country_code={country_code}"  # notice not adding a period here
 
-        proxy += f":{SCRAPER_API_KEY}"
+        proxy += f":{self.scraper_api_key}"
         proxy += "@proxy-server.scraperapi.com:8001"
         return {"https": proxy}
 
