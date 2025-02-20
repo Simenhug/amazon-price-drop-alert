@@ -1,6 +1,8 @@
 import csv
 import hashlib
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 import boto3
 
@@ -11,29 +13,46 @@ S3_BUCKET_NAME = "amazon-product-price-history"
 S3_PRICE_HISTORY_FILE_KEY = f"product_price_history/{datetime.today().strftime('%Y-%m-%d')}.csv"  # Organize by date
 S3_PRODUCT_REGISTRY_FILE_KEY = "product_registry/product_registry.csv"  # Store the product ID, product name, and product URL
 
+# product registry csv file header: "product_id,product_name,product_url"
+PRODUCT_NAME_HEADER = "product_name"
+PRODUCT_URL_HEADER = "product_url"
+PRODUCT_ID_HEADER = "product_id"
 
-class ProductPriceProcessor:
+# product price history csv file header: "product_id,date,price"
+DATE_HEADER = "date"
+PRICE_HEADER = "price"
 
-    def store_prices(self, price_data: dict[tuple[str, str], str]) -> None:
+
+@dataclass
+class ProductDTO:
+    product_name: str
+    url: str
+    product_id: str
+    price: Optional[str] = None
+
+
+class ProductDataProcessor:
+
+    def store_prices(self, products: list[ProductDTO]) -> None:
         """
         :param price_data: A dictionary {(product_name, url): price}
         """
-
-        converted_price_data = {
-            self.hash_product_id(product_name, url): price
-            for (product_name, url), price in price_data.items()
-        }
         today_date = datetime.now().strftime("%Y-%m-%d")
 
         local_file_name = "temporary_price_data.csv"
         with open(local_file_name, mode="w", newline="") as file:
-            fieldnames = ["product_id", "date", "price"]
+            fieldnames = [PRODUCT_ID_HEADER, DATE_HEADER, PRICE_HEADER]
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
-            for product_id, price in converted_price_data.items():
-                writer.writerow(
-                    {"product_id": product_id, "date": today_date, "price": price}
-                )
+            for product in products:
+                if product.price:
+                    writer.writerow(
+                        {
+                            PRODUCT_ID_HEADER: product.product_id,
+                            DATE_HEADER: today_date,
+                            PRICE_HEADER: product.price,
+                        }
+                    )
 
         # Upload to S3
         s3_client = boto3.client("s3")
@@ -77,10 +96,10 @@ class ProductPriceProcessor:
             reader = csv.DictReader(file)
             for row in reader:
                 if (
-                    row["product_name"] == product_name
-                    and row["product_url"] == product_url
+                    row[PRODUCT_NAME_HEADER] == product_name
+                    and row[PRODUCT_URL_HEADER] == product_url
                 ):
-                    return row["product_id"]
+                    return row[PRODUCT_ID_HEADER]
         print(f"Product ID not found for {product_name} with URL {product_url}")
         return None
 
@@ -118,7 +137,10 @@ class ProductPriceProcessor:
         with open(local_file_name, mode="r", newline="") as file:
             reader = csv.DictReader(file)
             for row in reader:
-                if row["product_name"] == product_name and row["product_url"] == url:
+                if (
+                    row[PRODUCT_NAME_HEADER] == product_name
+                    and row[PRODUCT_URL_HEADER] == url
+                ):
                     print(
                         f"Product {product_name} with URL {url} already exists in the registry."
                     )
@@ -141,7 +163,7 @@ class ProductPriceProcessor:
             f"Appended new product {product_name} to s3://{S3_BUCKET_NAME}/{S3_PRODUCT_REGISTRY_FILE_KEY}"
         )
 
-    def list_registered_products(self) -> None:
+    def list_registered_products(self) -> list[ProductDTO]:
         """
         print out all the registered products in the database
         """
@@ -150,17 +172,22 @@ class ProductPriceProcessor:
         s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
-
+        products = []
         with open(local_file_name, mode="r", newline="") as file:
             reader = csv.DictReader(file)
-            next(reader)  # Skip the header line
             for row in reader:
-                print(row)
+                product = ProductDTO(
+                    product_name=row[PRODUCT_NAME_HEADER],
+                    url=row[PRODUCT_URL_HEADER],
+                    product_id=row[PRODUCT_ID_HEADER],
+                )
+            products.append(product)
+        return products
 
 
 # to register a new product to the watch list
 if __name__ == "__main__":
-    processor = ProductPriceProcessor()
+    processor = ProductDataProcessor()
     while True:
         register_new = (
             input("Would you like to register a new product to the watch list? (Y/n): ")

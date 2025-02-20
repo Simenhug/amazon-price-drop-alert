@@ -6,6 +6,8 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
+from app.amazon_url_handler import AmazonURLProcessor
+from app.s3_data_processor import ProductDataProcessor, ProductDTO
 from app.utils import RetryOnException
 
 PRICE_ELEMENT_SELECTOR = "#corePrice_feature_div"
@@ -25,6 +27,8 @@ class AmazonPriceExtractor:
         self.scraper_api_key = os.getenv("SCRAPER_API_KEY")
         if not self.scraper_api_key:
             raise ValueError("Scraper API Key not found in environment variables")
+        self.s3_data_processor = ProductDataProcessor()
+        self.url_handler = AmazonURLProcessor()
 
     def extract_price_from_soup(self, soup) -> str:
 
@@ -96,6 +100,31 @@ class AmazonPriceExtractor:
         print(f"Price: {price}\n")
         return price
 
+    def extract_price_for_all_registered_products(self) -> list[ProductDTO]:
+        products = self.s3_data_processor.list_registered_products()
+        for product in products:
+            try:
+                # ✅ Random Delay to Avoid Detection
+                time.sleep(random.uniform(6, 10))
+                human_like_url = self.url_handler.generate_human_like_amazon_url(
+                    product.url, product.product_name
+                )
+                price = self.get_amazon_price_with_soup(human_like_url)
+                product.price = price
+            except Exception as e:
+                print(
+                    f"Failed to extract price for {product.name} with {product.url}: {e}"
+                )
+
+        return products
+
+    def store_product_prices(self, products: list[ProductDTO]) -> None:
+        self.s3_data_processor.store_prices(products)
+
+    def run(self):
+        products = self.extract_price_for_all_registered_products()
+        self.store_product_prices(products)
+
 
 # this is only for testing locally, not how workflow is triggered in production
 # IMPORTANT: If the code is working fine but suddenly starts getting 404s, try a different amazon product
@@ -104,5 +133,3 @@ if __name__ == "__main__":
     extractor = AmazonPriceExtractor()
     price = extractor.get_amazon_price_with_soup(url, debug=True)
     print(f"The price of the product is: {price}\n")
-    # ✅ Random Delay to Avoid Detection
-    time.sleep(random.uniform(6, 10))
