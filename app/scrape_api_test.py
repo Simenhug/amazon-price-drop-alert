@@ -1,5 +1,7 @@
 import requests
 
+# tests for debugging Scraper API
+
 
 def test_scraper():
     proxy = {

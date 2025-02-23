@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from app.amazon_url_handler import AmazonURLProcessor
-from app.s3_data_processor import ProductDataProcessor, ProductDTO
+from app.s3_data_handler import ProductDTO, S3DataHandler
 from app.utils import InsuffcientScraperAPIQuotaException
 
 PRICE_ELEMENT_SELECTOR = "#corePriceDisplay_mobile_feature_div"
@@ -23,7 +23,7 @@ class AmazonPriceExtractor:
         self.scraper_api_key = os.getenv(scraper_api_key_name)
         if not self.scraper_api_key:
             raise ValueError("Scraper API Key not found in environment variables")
-        self.s3_data_processor = ProductDataProcessor()
+        self.s3_data_handler = S3DataHandler()
         self.url_handler = AmazonURLProcessor()
 
     def extract_price_from_soup(self, soup, debug: bool = False) -> str:
@@ -110,7 +110,7 @@ class AmazonPriceExtractor:
     def extract_price_for_all_registered_products(
         self, debug: bool = False
     ) -> list[ProductDTO]:
-        products = self.s3_data_processor.list_registered_products()
+        products = self.s3_data_handler.list_registered_products()
         if debug:
             print("\ngoing to extract prices for the following products:")
             for product in products:
@@ -152,7 +152,7 @@ class AmazonPriceExtractor:
             extractor.run(debug=debug)
 
     def store_product_prices(self, products: list[ProductDTO]) -> None:
-        self.s3_data_processor.store_prices(products)
+        self.s3_data_handler.store_prices(products)
 
     def run(self, debug: bool = False):
         products = self.extract_price_for_all_registered_products(debug=debug)

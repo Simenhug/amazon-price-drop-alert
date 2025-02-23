@@ -10,6 +10,7 @@ from app.amazon_url_handler import AmazonURLProcessor
 
 ID_SIZE = 16
 S3_BUCKET_NAME = "amazon-product-price-history"
+S3_PRICE_HISTORY_DIRECTORY = "product_price_history"
 S3_PRICE_HISTORY_FILE_KEY = f"product_price_history/{datetime.today().strftime('%Y-%m-%d')}.csv"  # Organize by date
 S3_PRODUCT_REGISTRY_FILE_KEY = "product_registry/product_registry.csv"  # Store the product ID, product name, and product URL
 
@@ -31,7 +32,52 @@ class ProductDTO:
     price: Optional[str] = None
 
 
-class ProductDataProcessor:
+class S3DataHandler:
+    """upload and download product data to and from S3"""
+
+    def __init__(self):
+        self.s3_client = boto3.client("s3")
+
+    def get_two_most_recent_prices(self) -> tuple[dict, dict]:
+
+        response = self.s3_client.list_objects_v2(
+            Bucket=S3_BUCKET_NAME, Prefix=S3_PRICE_HISTORY_DIRECTORY
+        )
+        if "Contents" not in response:
+            return []
+        # Filter out "directory" keys (ending with '/')
+        files_only = [
+            obj for obj in response["Contents"] if not obj["Key"].endswith("/")
+        ]
+
+        # Sort objects by last modified date, descending
+        sorted_files = sorted(
+            files_only, key=lambda obj: obj["LastModified"], reverse=True
+        )
+
+        previous_price_file_key, current_price_file_key = [
+            obj["Key"] for obj in sorted_files[:2]
+        ]
+        return (
+            self.get_prices_from_file(previous_price_file_key),
+            self._get_prices_from_file(current_price_file_key),
+        )
+
+    def get_prices_from_file(self, file_key: str) -> dict:
+        """
+        Download the file from S3 and parse the prices
+        :return: A dictionary of prices {product_id: price}
+        """
+        local_file_name = "temporary_price_data.csv"
+        self.s3_client.download_file(S3_BUCKET_NAME, file_key, local_file_name)
+
+        prices = {}
+        with open(local_file_name, mode="r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                prices[row[PRODUCT_ID_HEADER]] = row[PRICE_HEADER]
+
+        return prices
 
     def store_prices(self, products: list[ProductDTO]) -> None:
         """
@@ -55,8 +101,7 @@ class ProductDataProcessor:
                     )
 
         # Upload to S3
-        s3_client = boto3.client("s3")
-        s3_client.upload_file(
+        self.s3_client.upload_file(
             local_file_name, S3_BUCKET_NAME, S3_PRICE_HISTORY_FILE_KEY
         )
 
@@ -86,9 +131,8 @@ class ProductDataProcessor:
         :param url: The URL of the product
         :return: The product ID if found, otherwise None
         """
-        s3_client = boto3.client("s3")
         local_file_name = "temporary_product_registry.csv"
-        s3_client.download_file(
+        self.s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
 
@@ -102,6 +146,29 @@ class ProductDataProcessor:
                     return row[PRODUCT_ID_HEADER]
         print(f"Product ID not found for {product_name} with URL {product_url}")
         return None
+
+    def get_products_with_ids(self, product_ids: list[str]) -> dict[str, ProductDTO]:
+        """
+        :param product_ids: A list of product IDs
+        :return: A dictionary of product IDs to ProductDTOs
+        """
+        local_file_name = "temporary_product_registry.csv"
+        self.s3_client.download_file(
+            S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
+        )
+
+        products = {}
+        with open(local_file_name, mode="r", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                if row[PRODUCT_ID_HEADER] in product_ids:
+                    product = ProductDTO(
+                        product_name=row[PRODUCT_NAME_HEADER],
+                        url=row[PRODUCT_URL_HEADER],
+                        product_id=row[PRODUCT_ID_HEADER],
+                    )
+                    products[row[PRODUCT_ID_HEADER]] = product
+        return products
 
     def register_new_product(self, product_name: str, url: str) -> str:
         """
@@ -125,11 +192,10 @@ class ProductDataProcessor:
                 print("Invalid input. Please enter 'Y' to proceed or 'n' to cancel.")
 
         url = simplified_url
-        s3_client = boto3.client("s3")
         local_file_name = "temporary_product_registry.csv"
 
         # Download the existing product registry file
-        s3_client.download_file(
+        self.s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
 
@@ -155,7 +221,7 @@ class ProductDataProcessor:
             writer.writerow([product_name, url, product_id])
 
         # Upload the updated file back to S3
-        s3_client.upload_file(
+        self.s3_client.upload_file(
             local_file_name, S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY
         )
 
@@ -167,9 +233,8 @@ class ProductDataProcessor:
         """
         print out all the registered products in the database
         """
-        s3_client = boto3.client("s3")
         local_file_name = "temporary_product_registry.csv"
-        s3_client.download_file(
+        self.s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
         products = []
@@ -184,10 +249,20 @@ class ProductDataProcessor:
                 products.append(product)
         return products
 
+    def get_two_most_recent_price_files(self):
+        """
+        Get the two most recent price files from S3
+        """
+        files = self.s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME)
+        files = files["Contents"]
+        files.sort(key=lambda x: x["LastModified"], reverse=True)
+        recent_files = files[:2]
+        return recent_files
+
 
 # to register a new product to the watch list
 if __name__ == "__main__":
-    processor = ProductDataProcessor()
+    processor = S3DataHandler()
     while True:
         register_new = (
             input("Would you like to register a new product to the watch list? (Y/n): ")
