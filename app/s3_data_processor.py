@@ -181,7 +181,7 @@ class ProductDataProcessor:
                     url=row[PRODUCT_URL_HEADER],
                     product_id=row[PRODUCT_ID_HEADER],
                 )
-            products.append(product)
+                products.append(product)
         return products
 
 

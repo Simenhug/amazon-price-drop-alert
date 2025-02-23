@@ -8,40 +8,37 @@ from dotenv import load_dotenv
 
 from app.amazon_url_handler import AmazonURLProcessor
 from app.s3_data_processor import ProductDataProcessor, ProductDTO
-from app.utils import RetryOnException
+from app.utils import InsuffcientScraperAPIQuotaException
 
-PRICE_ELEMENT_SELECTOR = "#corePrice_feature_div"
+PRICE_ELEMENT_SELECTOR = "#corePriceDisplay_mobile_feature_div"
 PRICE_WHOLE_SPAN_CLASS = ".a-price-whole"
 PRICE_FRACTION_SPAN_CLASS = ".a-price-fraction"
 
 
-class PriceNotFoundException(Exception):
-    def __init__(self, original_exception=None):
-        self.original_exception = original_exception
-        super().__init__(f"Price not found. Original exception: {original_exception}")
-
-
 class AmazonPriceExtractor:
-    def __init__(self):
+    def __init__(self, scraper_api_key_name: str = None):
         load_dotenv()
-        self.scraper_api_key = os.getenv("SCRAPER_API_KEY")
+        if not scraper_api_key_name:
+            scraper_api_key_name = "SCRAPER_API_KEY"
+        self.scraper_api_key = os.getenv(scraper_api_key_name)
         if not self.scraper_api_key:
             raise ValueError("Scraper API Key not found in environment variables")
         self.s3_data_processor = ProductDataProcessor()
         self.url_handler = AmazonURLProcessor()
 
-    def extract_price_from_soup(self, soup) -> str:
+    def extract_price_from_soup(self, soup, debug: bool = False) -> str:
 
-        try:
-            price_whole = soup.select_one(
-                f"{PRICE_ELEMENT_SELECTOR} {PRICE_WHOLE_SPAN_CLASS}"
-            ).text.strip()
-            price_fraction = soup.select_one(
-                f"{PRICE_ELEMENT_SELECTOR} {PRICE_FRACTION_SPAN_CLASS}"
-            ).text.strip()
-            return price_whole + price_fraction
-        except Exception as e:
-            raise PriceNotFoundException(e)
+        price_whole = soup.select_one(
+            f"{PRICE_ELEMENT_SELECTOR} {PRICE_WHOLE_SPAN_CLASS}"
+        ).text.strip()
+        if debug:
+            print(f"Price Whole: {price_whole}\n")
+        price_fraction = soup.select_one(
+            f"{PRICE_ELEMENT_SELECTOR} {PRICE_FRACTION_SPAN_CLASS}"
+        ).text.strip()
+        if debug:
+            print(f"Price Fraction: {price_fraction}\n")
+        return price_whole + price_fraction
 
     def scraper_api_proxy_builder(
         self,
@@ -75,13 +72,13 @@ class AmazonPriceExtractor:
         proxy += "@proxy-server.scraperapi.com:8001"
         return {"https": proxy}
 
-    @RetryOnException(exception=PriceNotFoundException, retries=1)
     def get_amazon_price_with_soup(self, url: str, debug: bool = False) -> str:
 
         proxy = self.scraper_api_proxy_builder()
         print(f"Proxy: {proxy}\n")
         response = requests.get(url, proxies=proxy, verify=False)
         print(f"HTTP Status Code: {response.status_code}\n")
+        self._check_insufficient_scraper_api_quota(response)
 
         if debug:
             # Save the response content to an HTML file
@@ -96,40 +93,73 @@ class AmazonPriceExtractor:
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        price = self.extract_price_from_soup(soup)
+        price = self.extract_price_from_soup(soup, debug=debug)
         print(f"Price: {price}\n")
         return price
 
-    def extract_price_for_all_registered_products(self) -> list[ProductDTO]:
+    def _check_insufficient_scraper_api_quota(self, response: requests.Response):
+        if response.status_code == 403:
+            if all(
+                keyword in response.text.lower()
+                for keyword in ["exhausted", "api credits", "scraperapi"]
+            ):
+                print("Current Scraper API likely reached its monthly limit.")
+                print(f"response text: {response.text}")
+                raise InsuffcientScraperAPIQuotaException()
+
+    def extract_price_for_all_registered_products(
+        self, debug: bool = False
+    ) -> list[ProductDTO]:
         products = self.s3_data_processor.list_registered_products()
+        if debug:
+            print("\ngoing to extract prices for the following products:")
+            for product in products:
+                print(product.product_name)
         for product in products:
             try:
-                # ✅ Random Delay to Avoid Detection
+                if debug:
+                    print(
+                        f"\nExtracting price for {product.product_name} with {product.url}"
+                    )
+                # Random Delay to Avoid Detection
                 time.sleep(random.uniform(6, 10))
                 human_like_url = self.url_handler.generate_human_like_amazon_url(
                     product.url, product.product_name
                 )
-                price = self.get_amazon_price_with_soup(human_like_url)
+                if debug:
+                    print(f"\nHuman-like URL: {human_like_url}\n")
+                price = self.get_amazon_price_with_soup(human_like_url, debug=debug)
                 product.price = price
+            except InsuffcientScraperAPIQuotaException:
+                self._retry_with_secondary_scraper_api_key(debug=debug)
+                return
             except Exception as e:
                 print(
-                    f"Failed to extract price for {product.name} with {product.url}: {e}"
+                    f"Failed to extract price for {product.product_name} with {product.url}: {e}"
                 )
 
         return products
 
+    def _retry_with_secondary_scraper_api_key(self, debug: bool = False):
+        """retry with the secondary scraper API key"""
+        if self.scraper_api_key_name == "SCRAPER_API_KEY":
+            print(
+                "Insufficient Scraper API Quota. Restarting the extraction process with secondary Scraper API key."
+            )
+            extractor = AmazonPriceExtractor(
+                scraper_api_key_name="SECONDARY_SCRAPER_API_KEY"
+            )
+            extractor.run(debug=debug)
+
     def store_product_prices(self, products: list[ProductDTO]) -> None:
         self.s3_data_processor.store_prices(products)
 
-    def run(self):
-        products = self.extract_price_for_all_registered_products()
+    def run(self, debug: bool = False):
+        products = self.extract_price_for_all_registered_products(debug=debug)
         self.store_product_prices(products)
 
 
 # this is only for testing locally, not how workflow is triggered in production
-# IMPORTANT: If the code is working fine but suddenly starts getting 404s, try a different amazon product
 if __name__ == "__main__":
-    url = "https://www.amazon.com/dp/B0DPLYGYXV"
     extractor = AmazonPriceExtractor()
-    price = extractor.get_amazon_price_with_soup(url, debug=True)
-    print(f"The price of the product is: {price}\n")
+    extractor.run(debug=True)

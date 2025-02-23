@@ -30,3 +30,7 @@ class RetryOnException:
                         raise
 
         return wrapper
+
+
+class InsuffcientScraperAPIQuotaException(Exception):
+    pass
