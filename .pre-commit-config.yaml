@@ -11,7 +11,7 @@ repos:
     rev: 6.0.0
     hooks:
       - id: flake8
-        args: ["--max-line-length=999", "--ignore=E501,E231,W503"]
+        args: ["--max-line-length=999", "--ignore=E501,E231,W503,E241,E702"]
 
   - repo: https://github.com/PyCQA/isort
     rev: 5.12.0
