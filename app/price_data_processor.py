@@ -2,6 +2,8 @@ import time
 from dataclasses import dataclass
 
 import boto3
+import matplotlib.pyplot as plt
+import pandas as pd
 
 from app.s3_data_handler import ProductDTO, S3DataHandler
 
@@ -61,6 +63,11 @@ class PriceDataProcessor:
         return price_drops
 
     def query_historical_prices(self, product_ids):
+        """
+        query all available historical prices for the given product_ids for the last 365 days
+        returns a list of dictionaries, each dict contains product_id, date, and price
+        like [{'product_id': '123abc', 'date': '2025-02-23 00:00:00.000', 'price': '149.99'}]
+        """
         # Format product_ids for SQL query
         formatted_ids = ", ".join(f"'{pid}'" for pid in product_ids)
 
@@ -125,9 +132,67 @@ class PriceDataProcessor:
 
         return rows
 
+    def plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, plt.Figure]:
+        """
+        takes in list of price data, returns pyplot figures for each product
+        :param data: list of dictionaries like [{'product_id': '123abc', 'date': '2025-02-23 00:00:00.000', 'price': '149.99'}]
+        """
+        # Convert input data to DataFrame
+        df = pd.DataFrame(data)
+        df["date"] = pd.to_datetime(df["date"])  # Ensure dates are in datetime format
+        df["price"] = df["price"].astype(float)  # Ensure price is float
+
+        # Group data by product_id
+        product_groups = df.groupby("product_id")
+
+        graphs = {}
+
+        for product_id, group in product_groups:
+            # Sort by date
+            group = group.sort_values(by="date")
+
+            # Create a date range from min to max date
+            full_date_range = pd.date_range(
+                start=group["date"].min(), end=group["date"].max(), freq="D"
+            )
+
+            # Reindex with full date range and forward fill missing prices
+            group = (
+                group.set_index("date").reindex(full_date_range).ffill().reset_index()
+            )
+            group.rename(columns={"index": "date"}, inplace=True)
+
+            # Create figure and plot price graph
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(group["date"], group["price"], marker="o", linestyle="-")
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Price")
+            product = self.s3_data_handler.get_product_by_id(product_id)
+            ax.set_title(f"Price Trend for {product.product_name}")
+            ax.tick_params(axis="x", rotation=45)
+            ax.grid(True)
+            plt.show()
+
+            graphs[product_id] = fig
+
+        return graphs
+
 
 # just for testing
 if __name__ == "__main__":
     processor = PriceDataProcessor()
     product_ids = ["280e749b8ced667c", "5bc4c45f96482a43"]
-    print(processor.query_historical_prices(product_ids))
+    # print(processor.query_historical_prices(product_ids))
+    data = [
+        {
+            "product_id": "280e749b8ced667c",
+            "date": "2025-02-23 00:00:00.000",
+            "price": "149.99",
+        },
+        {
+            "product_id": "5bc4c45f96482a43",
+            "date": "2025-02-23 00:00:00.000",
+            "price": "299.99",
+        },
+    ]
+    processor.plot_price_graphs(data)

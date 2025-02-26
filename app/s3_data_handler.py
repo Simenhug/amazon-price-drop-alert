@@ -31,12 +31,27 @@ class ProductDTO:
     product_id: str
     price: Optional[str] = None
 
+    def __hash__(self):
+        return hash(self.product_id)
+
 
 class S3DataHandler:
-    """upload and download product data to and from S3"""
+    """
+    A singleton class to:
+    * upload and download product data to and from S3
+    * look up product data by product ID
+    """
+
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(S3DataHandler, cls).__new__(cls, *args, **kwargs)
+        return cls._instance
 
     def __init__(self):
         self.s3_client = boto3.client("s3")
+        self.product_cache = set()
 
     def get_two_most_recent_prices(self) -> tuple[dict, dict]:
 
@@ -122,42 +137,24 @@ class S3DataHandler:
         ]
         return product_id
 
-    def lookup_product_id(self, product_name: str, product_url: str) -> str | None:
-        """
-        retrieve the product registry csv file on S3 and lookup the product ID based on the product name and URL.
-        The csv header is "product_id,product_name,product_url"
-
-        :param product_name: The name of the product
-        :param url: The URL of the product
-        :return: The product ID if found, otherwise None
-        """
-        local_file_name = "temporary_product_registry.csv"
-        self.s3_client.download_file(
-            S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
-        )
-
-        with open(local_file_name, mode="r", newline="") as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                if (
-                    row[PRODUCT_NAME_HEADER] == product_name
-                    and row[PRODUCT_URL_HEADER] == product_url
-                ):
-                    return row[PRODUCT_ID_HEADER]
-        print(f"Product ID not found for {product_name} with URL {product_url}")
-        return None
-
     def get_products_with_ids(self, product_ids: list[str]) -> dict[str, ProductDTO]:
         """
         :param product_ids: A list of product IDs
-        :return: A dictionary of product IDs to ProductDTOs
+        :return: A dictionary of product IDs to ProductDTOs (without price)
         """
+        product_ids = set(product_ids)
+        products = {}
+        for product_id in list(product_ids):
+            cached_product = self._get_product_from_cache(product_id)
+            if cached_product:
+                products[product_id] = cached_product
+                product_ids.remove(product_id)
+
         local_file_name = "temporary_product_registry.csv"
         self.s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
 
-        products = {}
         with open(local_file_name, mode="r", newline="") as file:
             reader = csv.DictReader(file)
             for row in reader:
@@ -168,6 +165,10 @@ class S3DataHandler:
                         product_id=row[PRODUCT_ID_HEADER],
                     )
                     products[row[PRODUCT_ID_HEADER]] = product
+                    self.product_cache.add(product)
+                    product_ids.remove(row[PRODUCT_ID_HEADER])
+        if product_ids:
+            raise KeyError(f"Product IDs not found in the registry: {product_ids}")
         return products
 
     def register_new_product(self, product_name: str, url: str) -> str:
@@ -225,6 +226,8 @@ class S3DataHandler:
             local_file_name, S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY
         )
 
+        self.product_cache.add(ProductDTO(product_name, url, product_id))
+
         print(
             f"Appended new product {product_name} to s3://{S3_BUCKET_NAME}/{S3_PRODUCT_REGISTRY_FILE_KEY}"
         )
@@ -247,6 +250,7 @@ class S3DataHandler:
                     product_id=row[PRODUCT_ID_HEADER],
                 )
                 products.append(product)
+                self.product_cache.add(product)
         return products
 
     def get_two_most_recent_price_files(self):
@@ -259,24 +263,14 @@ class S3DataHandler:
         recent_files = files[:2]
         return recent_files
 
+    def _get_product_from_cache(self, product_id: str) -> Optional[ProductDTO]:
+        for product in self.product_cache:
+            if product.product_id == product_id:
+                return product
+        return None
 
-# to register a new product to the watch list
-if __name__ == "__main__":
-    processor = S3DataHandler()
-    while True:
-        register_new = (
-            input("Would you like to register a new product to the watch list? (Y/n): ")
-            .strip()
-            .lower()
-        )
-        if register_new in ("", "y"):
-            product_name = input("Enter the product name: ").strip()
-            product_url = input("Enter the product URL: ").strip()
-            processor.register_new_product(product_name, product_url)
-        elif register_new == "n":
-            print("Exiting the registration loop.")
-            break
-        else:
-            print(
-                "Invalid input. Please enter 'Y' to register a new product or 'n' to exit."
-            )
+    def get_product_by_id(self, product_id: str) -> ProductDTO:
+        product = self._get_product_from_cache(product_id)
+        if product:
+            return product
+        return self.get_products_with_ids([product_id])[product_id]
