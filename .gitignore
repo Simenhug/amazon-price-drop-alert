@@ -155,3 +155,7 @@ terraform.tfstate.backup
 
 # CSV files
 *.csv
+
+# credentials
+credentials.json
+token.json
