@@ -2,6 +2,7 @@ import base64
 import os
 from email.mime.text import MIMEText
 
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -55,9 +56,12 @@ def send_email(sender, recipient, subject, message_text):
 
 
 # for testing
-send_email(
-    sender="xinmianhug@gmail.com",
-    recipient="xinmianhug@gmail.com",
-    subject="Price Drop Alert Test!",
-    message_text="The price of your tracked item has dropped! Check it out now.",
-)
+if __name__ == "__main__":
+    load_dotenv()
+    email = os.getenv("EMAIL")
+    send_email(
+        sender=email,
+        recipient=email,
+        subject="Price Drop Alert Test!",
+        message_text="The price of your tracked item has dropped! Check it out now.",
+    )
