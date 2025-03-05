@@ -1,37 +1,59 @@
 import base64
+import json
 import os
 from email.mime.text import MIMEText
 
+import boto3
 from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 # Define Gmail API Scopes
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+S3_BUCKET_NAME = "amazon-product-price-history"
+GOOGLE_TOKEN_S3_OBJECT_KEY = "secrets/token.json"
+
+s3 = boto3.client("s3")
+
+
+def get_token_from_s3():
+    """Retrieve token.json from S3."""
+    try:
+        response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=GOOGLE_TOKEN_S3_OBJECT_KEY)
+        token_data = response["Body"].read().decode("utf-8")
+        return json.loads(token_data)
+    except Exception as e:
+        print(f"Error fetching token from S3: {e}")
+        return None
+
+
+def save_token_to_s3(creds):
+    """Save updated token.json to S3."""
+    try:
+        token_data = json.dumps(json.loads(creds.to_json()))
+        s3.put_object(
+            Bucket=S3_BUCKET_NAME, Key=GOOGLE_TOKEN_S3_OBJECT_KEY, Body=token_data
+        )
+        print("Updated token.json saved to S3.")
+    except Exception as e:
+        print(f"Error saving token to S3: {e}")
 
 
 def authenticate_gmail():
-    """Authenticate and get Gmail API service."""
-    creds = None
-    token_path = "token.json"
+    """Authenticate using a refresh token stored in S3."""
+    creds_data = get_token_from_s3()
 
-    # Load existing credentials if available
-    if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    if not creds_data:
+        print("No valid credentials found. Exiting authentication.")
+        return None
 
-    # Authenticate if no valid credentials exist
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            creds = flow.run_local_server(port=0)
+    creds = Credentials.from_authorized_user_info(creds_data, SCOPES)
 
-        # Save credentials for future use
-        with open(token_path, "w") as token:
-            token.write(creds.to_json())
+    # Refresh token if expired
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        save_token_to_s3(creds)  # Update S3 with the refreshed token
 
     return build("gmail", "v1", credentials=creds)
 
@@ -62,6 +84,6 @@ if __name__ == "__main__":
     send_email(
         sender=email,
         recipient=email,
-        subject="Price Drop Alert Test!",
-        message_text="The price of your tracked item has dropped! Check it out now.",
+        subject="Email Test!",
+        message_text="The is an email test. Hope you have a great day :)",
     )
