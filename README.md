@@ -36,6 +36,9 @@ install dependencies
 set up pre-commit hooks, which includes linters
 `pre-commit install`
 
+setup vscode python interpreter
+Cmd + Shift + P and select "Python: Select Interpreter" and choose the python version under the virtual environment
+
 *Scraper API*
 Scraper API free tier is sufficient for this project. Sign up for a free account, then add your API key to the `.env` file under the key `SCRAPER_API_KEY`.
 
