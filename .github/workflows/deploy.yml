@@ -16,25 +16,101 @@ jobs:
         with:
           python-version: 3.12.1
 
-      - name: Install Dependencies
+      - name: Configure AWS Credentials
         run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region us-east-1
+
+      # don't want to upload dependencies every time, only when there's changes in requirements.txt
+      # so we calculate the hash of the requirements.txt
+      - name: Calculate Dependencies Hash
+        id: deps_hash
+        run: |
+          DEPS_HASH=$(sha256sum requirements.txt | cut -d' ' -f1)
+          echo "DEPS_HASH=$DEPS_HASH" >> $GITHUB_ENV
+          echo "Calculated dependencies hash: $DEPS_HASH"
+
+      - name: Check if Layer Version Exists
+        id: check_layer
+        # if a lambda layer with the same hash already exists, we don't need to upload dependencies
+        run: |
+          EXISTING_VERSION=$(aws lambda list-layer-versions \
+            --layer-name amazon_price_check_dependencies \
+            --query "LayerVersions[?Description=='${{ env.DEPS_HASH }}'].Version" \
+            --output text || echo "")
+          if [ -n "$EXISTING_VERSION" ]; then
+            echo "Found existing layer version that matches the requirements.txt hash: $EXISTING_VERSION"
+            echo "LAYER_VERSION=$EXISTING_VERSION" >> $GITHUB_ENV
+            echo "LAYER_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "No existing layer version found that matches the requirements.txt hash, will create new one"
+            echo "LAYER_EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Install Dependencies for Layer
+        if: env.LAYER_EXISTS == 'false'
+        run: |
+          echo "Installing dependencies..."
+          mkdir -p dependencies/python
           pip install --upgrade pip
-          pip install -r requirements.txt -t .
+          pip install -r requirements.txt -t dependencies/python/
+          echo "Dependencies installed successfully"
 
-      # Verify AWS CLI Version (Using Preinstalled AWS CLI)
-      - name: Check AWS CLI Version
-        run: aws --version
-
-      - name: Zip Code
-        run: zip -r deployment.zip . -x "*.git*" "README.md" ".github/*"
-
-      - name: Deploy to AWS Lambda
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
+      - name: Create and Upload Lambda Layer
+        if: env.LAYER_EXISTS == 'false'
         run: |
+          echo "Creating and uploading new layer..."
+          cd dependencies
+          zip -r layer.zip python/
+          aws lambda publish-layer-version \
+            --layer-name amazon_price_check_dependencies \
+            --description "${{ env.DEPS_HASH }}" \
+            --zip-file fileb://layer.zip \
+            --compatible-runtimes python3.12 \
+            --compatible-architectures x86_64
+          echo "Layer created and uploaded successfully"
+
+      - name: Get Latest Layer Version
+        if: env.LAYER_EXISTS == 'false'
+        id: get_layer_version
+        run: |
+          LAYER_VERSION=$(aws lambda list-layer-versions \
+            --layer-name amazon_price_check_dependencies \
+            --query 'LayerVersions[0].Version' \
+            --output text || echo "")
+          if [ -z "$LAYER_VERSION" ]; then
+            echo "Error: Failed to get layer version"
+            exit 1
+          fi
+          echo "Got latest layer version: $LAYER_VERSION"
+          echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
+
+      - name: Update Lambda Function Configuration
+        if: env.LAYER_EXISTS == 'false'
+        run: |
+          echo "Updating Lambda function configuration..."
+          aws lambda update-function-configuration \
+            --function-name amazon_price_check \
+            --layers arn:aws:lambda:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:layer:amazon_price_check_dependencies:${{ env.LAYER_VERSION }}
+          echo "Waiting for function update to complete..."
+          aws lambda wait function-updated --function-name amazon_price_check
+          echo "Function configuration updated successfully"
+
+      - name: Zip Application Code
+        run: |
+          echo "Zipping application code..."
+          zip -r deployment.zip . -x "*.git*" "README.md" ".github/*" "dependencies/*" "requirements.txt"
+          echo "Application code zipped successfully"
+
+      - name: Deploy Application Code to AWS Lambda
+        run: |
+          echo "Deploying application code..."
           aws lambda update-function-code \
-          --function-name amazon_price_check \
-          --zip-file fileb://deployment.zip
+            --function-name amazon_price_check \
+            --zip-file fileb://deployment.zip
+            --publish
+          echo "Waiting for code update to complete..."
+          aws lambda wait function-updated --function-name amazon_price_check
+          echo "Application code deployed successfully"
 

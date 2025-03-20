@@ -1,6 +1,12 @@
+import os
+import sys
+
+# Check if running in AWS Lambda (AWS_LAMBDA_FUNCTION_NAME is set in Lambda runtime)
+if "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
+    sys.path.append("/opt/python")
+
 import base64
 import json
-import os
 from email.mime.text import MIMEText
 
 import boto3
