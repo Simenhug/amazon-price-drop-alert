@@ -1,8 +1,7 @@
 beautifulsoup4==4.13.3
 boto3==1.36.22
-google_api_python_client==2.162.0
+pandas-lite==2.2.3
 matplotlib==3.10.1
-pandas==2.2.3
 protobuf==6.30.0
 python-dotenv==1.0.1
-Requests==2.32.3
+requests==2.32.3

@@ -22,77 +22,134 @@ jobs:
           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws configure set region us-east-1
 
-      # don't want to upload dependencies every time, only when there's changes in requirements.txt
-      # so we calculate the hash of the requirements.txt
-      - name: Calculate Dependencies Hash
+      # Calculate hashes for both requirements files
+      - name: Calculate Dependencies Hashes
         id: deps_hash
         run: |
-          DEPS_HASH=$(sha256sum requirements.txt | cut -d' ' -f1)
-          echo "DEPS_HASH=$DEPS_HASH" >> $GITHUB_ENV
-          echo "Calculated dependencies hash: $DEPS_HASH"
+          MAIN_DEPS_HASH=$(sha256sum requirements.txt | cut -d' ' -f1)
+          GOOGLE_DEPS_HASH=$(sha256sum requirements_google.txt | cut -d' ' -f1)
+          echo "MAIN_DEPS_HASH=$MAIN_DEPS_HASH" >> $GITHUB_ENV
+          echo "GOOGLE_DEPS_HASH=$GOOGLE_DEPS_HASH" >> $GITHUB_ENV
+          echo "Calculated main dependencies hash: $MAIN_DEPS_HASH"
+          echo "Calculated Google dependencies hash: $GOOGLE_DEPS_HASH"
 
-      - name: Check if Layer Version Exists
-        id: check_layer
-        # if a lambda layer with the same hash already exists, we don't need to upload dependencies
+      - name: Check if Main Layer Version Exists
+        id: check_main_layer
         run: |
           EXISTING_VERSION=$(aws lambda list-layer-versions \
             --layer-name amazon_price_check_dependencies \
-            --query "LayerVersions[?Description=='${{ env.DEPS_HASH }}'].Version" \
+            --query "LayerVersions[?Description=='${{ env.MAIN_DEPS_HASH }}'].Version" \
             --output text || echo "")
           if [ -n "$EXISTING_VERSION" ]; then
-            echo "Found existing layer version that matches the requirements.txt hash: $EXISTING_VERSION"
-            echo "LAYER_VERSION=$EXISTING_VERSION" >> $GITHUB_ENV
-            echo "LAYER_EXISTS=true" >> $GITHUB_ENV
+            echo "Found existing main layer version that matches the requirements.txt hash: $EXISTING_VERSION"
+            echo "MAIN_LAYER_VERSION=$EXISTING_VERSION" >> $GITHUB_ENV
+            echo "MAIN_LAYER_EXISTS=true" >> $GITHUB_ENV
           else
-            echo "No existing layer version found that matches the requirements.txt hash, will create new one"
-            echo "LAYER_EXISTS=false" >> $GITHUB_ENV
+            echo "No existing main layer version found that matches the requirements.txt hash, will create new one"
+            echo "MAIN_LAYER_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Install Dependencies for Layer
-        if: env.LAYER_EXISTS == 'false'
+      - name: Check if Google Layer Version Exists
+        id: check_google_layer
         run: |
-          echo "Installing dependencies..."
+          EXISTING_VERSION=$(aws lambda list-layer-versions \
+            --layer-name amazon_price_check_google_dependencies \
+            --query "LayerVersions[?Description=='${{ env.GOOGLE_DEPS_HASH }}'].Version" \
+            --output text || echo "")
+          if [ -n "$EXISTING_VERSION" ]; then
+            echo "Found existing Google layer version that matches the requirements_google.txt hash: $EXISTING_VERSION"
+            echo "GOOGLE_LAYER_VERSION=$EXISTING_VERSION" >> $GITHUB_ENV
+            echo "GOOGLE_LAYER_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "No existing Google layer version found that matches the requirements_google.txt hash, will create new one"
+            echo "GOOGLE_LAYER_EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Install Main Dependencies for Layer
+        if: env.MAIN_LAYER_EXISTS == 'false'
+        run: |
+          echo "Installing main dependencies..."
           mkdir -p dependencies/python
           pip install --upgrade pip
           pip install -r requirements.txt -t dependencies/python/
-          echo "Dependencies installed successfully"
+          echo "Main dependencies installed successfully"
 
-      - name: Create and Upload Lambda Layer
-        if: env.LAYER_EXISTS == 'false'
+      - name: Install Google Dependencies for Layer
+        if: env.GOOGLE_LAYER_EXISTS == 'false'
         run: |
-          echo "Creating and uploading new layer..."
+          echo "Installing Google dependencies..."
+          mkdir -p google_dependencies/python
+          pip install --upgrade pip
+          pip install -r requirements_google.txt -t google_dependencies/python/
+          echo "Google dependencies installed successfully"
+
+      - name: Create and Upload Main Lambda Layer
+        if: env.MAIN_LAYER_EXISTS == 'false'
+        run: |
+          echo "Creating and uploading new main layer..."
           cd dependencies
           zip -r layer.zip python/
           aws lambda publish-layer-version \
             --layer-name amazon_price_check_dependencies \
-            --description "${{ env.DEPS_HASH }}" \
+            --description "${{ env.MAIN_DEPS_HASH }}" \
             --zip-file fileb://layer.zip \
             --compatible-runtimes python3.12 \
             --compatible-architectures x86_64
-          echo "Layer created and uploaded successfully"
+          echo "Main layer created and uploaded successfully"
 
-      - name: Get Latest Layer Version
-        if: env.LAYER_EXISTS == 'false'
-        id: get_layer_version
+      - name: Create and Upload Google Lambda Layer
+        if: env.GOOGLE_LAYER_EXISTS == 'false'
+        run: |
+          echo "Creating and uploading new Google layer..."
+          cd ../google_dependencies
+          zip -r layer.zip python/
+          aws lambda publish-layer-version \
+            --layer-name amazon_price_check_google_dependencies \
+            --description "${{ env.GOOGLE_DEPS_HASH }}" \
+            --zip-file fileb://layer.zip \
+            --compatible-runtimes python3.12 \
+            --compatible-architectures x86_64
+          echo "Google layer created and uploaded successfully"
+
+      - name: Get Latest Main Layer Version
+        if: env.MAIN_LAYER_EXISTS == 'false'
+        id: get_main_layer_version
         run: |
           LAYER_VERSION=$(aws lambda list-layer-versions \
             --layer-name amazon_price_check_dependencies \
             --query 'LayerVersions[0].Version' \
             --output text || echo "")
           if [ -z "$LAYER_VERSION" ]; then
-            echo "Error: Failed to get layer version"
+            echo "Error: Failed to get main layer version"
             exit 1
           fi
-          echo "Got latest layer version: $LAYER_VERSION"
-          echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
+          echo "Got latest main layer version: $LAYER_VERSION"
+          echo "MAIN_LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
+
+      - name: Get Latest Google Layer Version
+        if: env.GOOGLE_LAYER_EXISTS == 'false'
+        id: get_google_layer_version
+        run: |
+          LAYER_VERSION=$(aws lambda list-layer-versions \
+            --layer-name amazon_price_check_google_dependencies \
+            --query 'LayerVersions[0].Version' \
+            --output text || echo "")
+          if [ -z "$LAYER_VERSION" ]; then
+            echo "Error: Failed to get Google layer version"
+            exit 1
+          fi
+          echo "Got latest Google layer version: $LAYER_VERSION"
+          echo "GOOGLE_LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
 
       - name: Update Lambda Function Configuration
-        if: env.LAYER_EXISTS == 'false'
+        if: env.MAIN_LAYER_EXISTS == 'false' || env.GOOGLE_LAYER_EXISTS == 'false'
         run: |
           echo "Updating Lambda function configuration..."
           aws lambda update-function-configuration \
             --function-name amazon_price_check \
-            --layers arn:aws:lambda:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:layer:amazon_price_check_dependencies:${{ env.LAYER_VERSION }}
+            --layers \
+              arn:aws:lambda:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:layer:amazon_price_check_dependencies:${{ env.MAIN_LAYER_VERSION }} \
+              arn:aws:lambda:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:layer:amazon_price_check_google_dependencies:${{ env.GOOGLE_LAYER_VERSION }}
           echo "Waiting for function update to complete..."
           aws lambda wait function-updated --function-name amazon_price_check
           echo "Function configuration updated successfully"
@@ -100,7 +157,7 @@ jobs:
       - name: Zip Application Code
         run: |
           echo "Zipping application code..."
-          zip -r deployment.zip . -x "*.git*" "README.md" ".github/*" "dependencies/*" "requirements.txt"
+          zip -r deployment.zip . -x "*.git*" "README.md" ".github/*" "dependencies/*" "google_dependencies/*" "requirements.txt" "requirements_google.txt"
           echo "Application code zipped successfully"
 
       - name: Deploy Application Code to AWS Lambda
@@ -108,7 +165,7 @@ jobs:
           echo "Deploying application code..."
           aws lambda update-function-code \
             --function-name amazon_price_check \
-            --zip-file fileb://deployment.zip
+            --zip-file fileb://deployment.zip \
             --publish
           echo "Waiting for code update to complete..."
           aws lambda wait function-updated --function-name amazon_price_check

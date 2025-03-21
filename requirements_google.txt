@@ -1,0 +1,2 @@
+# a separate requirements file for google dependencies because its too large
+google-api-python-client==2.162.0 
