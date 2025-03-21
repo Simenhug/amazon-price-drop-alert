@@ -1,6 +1,6 @@
 beautifulsoup4==4.13.3
 boto3==1.36.22
-pandas-lite==0.1.2
+pandas-lite==0.1.1
 matplotlib==3.10.1
 protobuf==6.30.0
 python-dotenv==1.0.1
