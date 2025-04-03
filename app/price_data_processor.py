@@ -1,4 +1,3 @@
-import base64
 import os
 import sys
 
@@ -10,8 +9,8 @@ import time
 from dataclasses import dataclass
 
 import boto3
+import matplotlib.pyplot as plt
 import pandas as pd
-import plotly.express as px
 
 from app.s3_data_handler import ProductDTO, S3DataHandler
 
@@ -140,11 +139,10 @@ class PriceDataProcessor:
 
         return rows
 
-    def plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, str]:
+    def plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, plt.Figure]:
         """
-        takes in list of price data, returns base64 encoded PNG images for each product
+        takes in list of price data, returns pyplot figures for each product
         :param data: list of dictionaries like [{'product_id': '123abc', 'date': '2025-02-23 00:00:00.000', 'price': '149.99'}]
-        :return: dictionary mapping product_id to base64 encoded PNG image string
         """
         # Convert input data to DataFrame
         df = pd.DataFrame(data)
@@ -171,35 +169,18 @@ class PriceDataProcessor:
             )
             group.rename(columns={"index": "date"}, inplace=True)
 
-            # Get product info for title
+            # Create figure and plot price graph
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(group["date"], group["price"], marker="o", linestyle="-")
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Price")
             product = self.s3_data_handler.get_product_by_id(product_id)
+            ax.set_title(f"Price Trend for {product.product_name}")
+            ax.tick_params(axis="x", rotation=45)
+            ax.grid(True)
+            plt.show()
 
-            # Create plotly figure
-            fig = px.line(
-                group,
-                x="date",
-                y="price",
-                title=f"Price Trend for {product.product_name}",
-                markers=True,
-            )
-
-            # Customize the layout
-            fig.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Price",
-                xaxis=dict(
-                    tickangle=45,
-                    tickformat="%Y-%m-%d",
-                ),
-                showlegend=False,
-                template="plotly_white",
-                margin=dict(l=50, r=50, t=50, b=50),
-            )
-
-            # Convert to base64 encoded PNG
-            img_bytes = fig.to_image(format="png", width=800, height=400)
-            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-            graphs[product_id] = img_base64
+            graphs[product_id] = fig
 
         return graphs
 
@@ -212,44 +193,13 @@ if __name__ == "__main__":
     data = [
         {
             "product_id": "280e749b8ced667c",
-            "date": "2024-01-01 00:00:00.000",
+            "date": "2025-02-23 00:00:00.000",
             "price": "149.99",
         },
         {
-            "product_id": "280e749b8ced667c",
-            "date": "2024-02-01 00:00:00.000",
-            "price": "139.99",
-        },
-        {
-            "product_id": "280e749b8ced667c",
-            "date": "2024-03-01 00:00:00.000",
-            "price": "129.99",
-        },
-        {
             "product_id": "5bc4c45f96482a43",
-            "date": "2024-01-01 00:00:00.000",
+            "date": "2025-02-23 00:00:00.000",
             "price": "299.99",
         },
-        {
-            "product_id": "5bc4c45f96482a43",
-            "date": "2024-02-01 00:00:00.000",
-            "price": "279.99",
-        },
-        {
-            "product_id": "5bc4c45f96482a43",
-            "date": "2024-03-01 00:00:00.000",
-            "price": "259.99",
-        },
     ]
-    graphs = processor.plot_price_graphs(data)
-    print(f"Generated {len(graphs)} graphs")
-
-    # Save graphs as files
-    for product_id, graph_data in graphs.items():
-        # Decode base64 to bytes
-        img_bytes = base64.b64decode(graph_data)
-        # Save to file
-        filename = f"price_graph_{product_id}.png"
-        with open(filename, "wb") as f:
-            f.write(img_bytes)
-        print(f"Saved graph for product {product_id} to {filename}")
+    processor.plot_price_graphs(data)

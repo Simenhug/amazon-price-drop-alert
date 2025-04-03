@@ -159,6 +159,3 @@ terraform.tfstate.backup
 # credentials
 credentials.json
 token.json
-
-# price graphs
-*.png
