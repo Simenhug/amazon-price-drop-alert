@@ -9,7 +9,7 @@ data "aws_lambda_function" "existing_lambda" {
 
 # 🔹 EventBridge Rule to Trigger Lambda every Friday at 8AM EDT
 resource "aws_cloudwatch_event_rule" "lambda_schedule" {
-  name                = "lambda-daily-trigger"
+  name                = "lambda-weekly-trigger"
   description         = "Triggers Lambda every Friday at 8AM EDT"
   schedule_expression = "cron(0 13 ? * 6 *)"  # Runs every Friday at 13 PM UTC
 }
