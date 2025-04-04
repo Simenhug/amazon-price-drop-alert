@@ -11,163 +11,42 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v2
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.12.1
-
       - name: Configure AWS Credentials
-        run: |
-          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws configure set region us-east-1
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-      # Calculate hashes for both requirements files
-      - name: Calculate Dependencies Hashes
-        id: deps_hash
-        run: |
-          MAIN_DEPS_HASH=$(sha256sum requirements.txt | cut -d' ' -f1)
-          GOOGLE_DEPS_HASH=$(sha256sum requirements_google.txt | cut -d' ' -f1)
-          echo "MAIN_DEPS_HASH=$MAIN_DEPS_HASH" >> $GITHUB_ENV
-          echo "GOOGLE_DEPS_HASH=$GOOGLE_DEPS_HASH" >> $GITHUB_ENV
-          echo "Calculated main dependencies hash: $MAIN_DEPS_HASH"
-          echo "Calculated Google dependencies hash: $GOOGLE_DEPS_HASH"
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Check if Main Layer Version Exists
-        id: check_main_layer
+      - name: Create ECR Repository if not exists
         run: |
-          EXISTING_VERSION=$(aws lambda list-layer-versions \
-            --layer-name amazon_price_check_dependencies \
-            --query "LayerVersions[?Description=='${{ env.MAIN_DEPS_HASH }}'].Version" \
-            --output text || echo "")
-          if [ -n "$EXISTING_VERSION" ]; then
-            echo "Found existing main layer version that matches the requirements.txt hash: $EXISTING_VERSION"
-            echo "MAIN_LAYER_VERSION=$EXISTING_VERSION" >> $GITHUB_ENV
-            echo "MAIN_LAYER_EXISTS=true" >> $GITHUB_ENV
-          else
-            echo "No existing main layer version found that matches the requirements.txt hash, will create new one"
-            echo "MAIN_LAYER_EXISTS=false" >> $GITHUB_ENV
-          fi
+          aws ecr describe-repositories --repository-names amazon-price-check || \
+          aws ecr create-repository --repository-name amazon-price-check
 
-      - name: Check if Google Layer Version Exists
-        id: check_google_layer
+      - name: Build and Push Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: amazon-price-check
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          EXISTING_VERSION=$(aws lambda list-layer-versions \
-            --layer-name amazon_price_check_google_dependencies \
-            --query "LayerVersions[?Description=='${{ env.GOOGLE_DEPS_HASH }}'].Version" \
-            --output text || echo "")
-          if [ -n "$EXISTING_VERSION" ]; then
-            echo "Found existing Google layer version that matches the requirements_google.txt hash: $EXISTING_VERSION"
-            echo "GOOGLE_LAYER_VERSION=$EXISTING_VERSION" >> $GITHUB_ENV
-            echo "GOOGLE_LAYER_EXISTS=true" >> $GITHUB_ENV
-          else
-            echo "No existing Google layer version found that matches the requirements_google.txt hash, will create new one"
-            echo "GOOGLE_LAYER_EXISTS=false" >> $GITHUB_ENV
-          fi
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Install Main Dependencies for Layer
-        if: env.MAIN_LAYER_EXISTS == 'false'
+      - name: Update Lambda Function
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: amazon-price-check
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          echo "Installing main dependencies..."
-          mkdir -p dependencies/python
-          pip install --upgrade pip
-          pip install -r requirements.txt -t dependencies/python/
-          echo "Main dependencies installed successfully"
-
-      - name: Install Google Dependencies for Layer
-        if: env.GOOGLE_LAYER_EXISTS == 'false'
-        run: |
-          echo "Installing Google dependencies..."
-          mkdir -p google_dependencies/python
-          pip install --upgrade pip
-          pip install -r requirements_google.txt -t google_dependencies/python/
-          echo "Google dependencies installed successfully"
-
-      - name: Create and Upload Main Lambda Layer
-        if: env.MAIN_LAYER_EXISTS == 'false'
-        run: |
-          echo "Creating and uploading new main layer..."
-          cd dependencies
-          zip -r layer.zip python/
-          aws lambda publish-layer-version \
-            --layer-name amazon_price_check_dependencies \
-            --description "${{ env.MAIN_DEPS_HASH }}" \
-            --zip-file fileb://layer.zip \
-            --compatible-runtimes python3.12 \
-            --compatible-architectures x86_64
-          echo "Main layer created and uploaded successfully"
-
-      - name: Create and Upload Google Lambda Layer
-        if: env.GOOGLE_LAYER_EXISTS == 'false'
-        run: |
-          echo "Creating and uploading new Google layer..."
-          cd ../google_dependencies
-          zip -r layer.zip python/
-          aws lambda publish-layer-version \
-            --layer-name amazon_price_check_google_dependencies \
-            --description "${{ env.GOOGLE_DEPS_HASH }}" \
-            --zip-file fileb://layer.zip \
-            --compatible-runtimes python3.12 \
-            --compatible-architectures x86_64
-          echo "Google layer created and uploaded successfully"
-
-      - name: Get Latest Main Layer Version
-        if: env.MAIN_LAYER_EXISTS == 'false'
-        id: get_main_layer_version
-        run: |
-          LAYER_VERSION=$(aws lambda list-layer-versions \
-            --layer-name amazon_price_check_dependencies \
-            --query 'LayerVersions[0].Version' \
-            --output text || echo "")
-          if [ -z "$LAYER_VERSION" ]; then
-            echo "Error: Failed to get main layer version"
-            exit 1
-          fi
-          echo "Got latest main layer version: $LAYER_VERSION"
-          echo "MAIN_LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
-
-      - name: Get Latest Google Layer Version
-        if: env.GOOGLE_LAYER_EXISTS == 'false'
-        id: get_google_layer_version
-        run: |
-          LAYER_VERSION=$(aws lambda list-layer-versions \
-            --layer-name amazon_price_check_google_dependencies \
-            --query 'LayerVersions[0].Version' \
-            --output text || echo "")
-          if [ -z "$LAYER_VERSION" ]; then
-            echo "Error: Failed to get Google layer version"
-            exit 1
-          fi
-          echo "Got latest Google layer version: $LAYER_VERSION"
-          echo "GOOGLE_LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
-
-      - name: Update Lambda Function Configuration
-        if: env.MAIN_LAYER_EXISTS == 'false' || env.GOOGLE_LAYER_EXISTS == 'false'
-        run: |
-          echo "Updating Lambda function configuration..."
-          aws lambda update-function-configuration \
-            --function-name amazon_price_check \
-            --layers \
-              arn:aws:lambda:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:layer:amazon_price_check_dependencies:${{ env.MAIN_LAYER_VERSION }} \
-              arn:aws:lambda:us-east-1:${{ secrets.AWS_ACCOUNT_ID }}:layer:amazon_price_check_google_dependencies:${{ env.GOOGLE_LAYER_VERSION }}
-          echo "Waiting for function update to complete..."
-          aws lambda wait function-updated --function-name amazon_price_check
-          echo "Function configuration updated successfully"
-
-      - name: Zip Application Code
-        run: |
-          echo "Zipping application code..."
-          zip -r deployment.zip . -x "*.git*" "README.md" ".github/*" "dependencies/*" "google_dependencies/*" "requirements.txt" "requirements_google.txt"
-          echo "Application code zipped successfully"
-
-      - name: Deploy Application Code to AWS Lambda
-        run: |
-          echo "Deploying application code..."
           aws lambda update-function-code \
             --function-name amazon_price_check \
-            --zip-file fileb://deployment.zip \
-            --publish
-          echo "Waiting for code update to complete..."
+            --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           aws lambda wait function-updated --function-name amazon_price_check
-          echo "Application code deployed successfully"
+          echo "Lambda function updated successfully"
 
