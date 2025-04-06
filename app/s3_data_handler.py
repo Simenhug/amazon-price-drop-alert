@@ -90,7 +90,7 @@ class S3DataHandler:
         Download the file from S3 and parse the prices
         :return: A dictionary of prices {product_id: price}
         """
-        local_file_name = "temporary_price_data.csv"
+        local_file_name = "/tmp/temporary_price_data.csv"
         self.s3_client.download_file(S3_BUCKET_NAME, file_key, local_file_name)
 
         prices = {}
@@ -107,7 +107,7 @@ class S3DataHandler:
         """
         today_date = datetime.now().strftime("%Y-%m-%d")
 
-        local_file_name = "temporary_price_data.csv"
+        local_file_name = "/tmp/temporary_price_data.csv"
         with open(local_file_name, mode="w", newline="") as file:
             fieldnames = [PRODUCT_ID_HEADER, DATE_HEADER, PRICE_HEADER]
             writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -157,7 +157,7 @@ class S3DataHandler:
                 products[product_id] = cached_product
                 product_ids.remove(product_id)
 
-        local_file_name = "temporary_product_registry.csv"
+        local_file_name = "/tmp/temporary_product_registry.csv"
         self.s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
@@ -200,7 +200,7 @@ class S3DataHandler:
                 print("Invalid input. Please enter 'Y' to proceed or 'n' to cancel.")
 
         url = simplified_url
-        local_file_name = "temporary_product_registry.csv"
+        local_file_name = "/tmp/temporary_product_registry.csv"
 
         # Download the existing product registry file
         self.s3_client.download_file(
@@ -243,7 +243,7 @@ class S3DataHandler:
         """
         print out all the registered products in the database
         """
-        local_file_name = "temporary_product_registry.csv"
+        local_file_name = "/tmp/temporary_product_registry.csv"
         self.s3_client.download_file(
             S3_BUCKET_NAME, S3_PRODUCT_REGISTRY_FILE_KEY, local_file_name
         )
