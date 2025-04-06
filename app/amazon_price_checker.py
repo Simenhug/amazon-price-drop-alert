@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from app.amazon_url_handler import AmazonURLProcessor
+from app.price_data_processor import PriceDataProcessor
 from app.s3_data_handler import ProductDTO, S3DataHandler
 from app.utils import InsuffcientScraperAPIQuotaException
 
@@ -31,6 +32,7 @@ class AmazonPriceExtractor:
             raise ValueError("Scraper API Key not found in environment variables")
         self.s3_data_handler = S3DataHandler()
         self.url_handler = AmazonURLProcessor()
+        self.price_data_processor = PriceDataProcessor()
 
     def extract_price_from_soup(self, soup, debug: bool = False) -> str:
 
@@ -160,7 +162,20 @@ class AmazonPriceExtractor:
     def store_product_prices(self, products: list[ProductDTO]) -> None:
         self.s3_data_handler.store_prices(products)
 
+    def check_and_process_price_drops(self):
+        """
+        check for any price drops
+        generate price charts for any products with price drops
+        send email alerts with price chart images
+        """
+        price_drops = self.price_data_processor.check_price_drops()
+        if not price_drops:
+            print("\nNo price drops detected.")
+            return
+        # TODO: send email alerts with price chart images
+
     def run(self, debug: bool = False):
+        # scrape latest price for all watched products
         products = self.extract_price_for_all_registered_products(debug=debug)
         self.store_product_prices(products)
 

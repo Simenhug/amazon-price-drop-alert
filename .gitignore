@@ -159,3 +159,6 @@ terraform.tfstate.backup
 # credentials
 credentials.json
 token.json
+
+# everything in tmp
+tmp/

@@ -77,12 +77,14 @@ class S3DataHandler:
             files_only, key=lambda obj: obj["LastModified"], reverse=True
         )
 
-        previous_price_file_key, current_price_file_key = [
+        current_price_file_key, previous_price_file_key = [
             obj["Key"] for obj in sorted_files[:2]
         ]
+        print("Previous price file:", previous_price_file_key)
+        print("Current price file:", current_price_file_key)
         return (
             self.get_prices_from_file(previous_price_file_key),
-            self._get_prices_from_file(current_price_file_key),
+            self.get_prices_from_file(current_price_file_key),
         )
 
     def get_prices_from_file(self, file_key: str) -> dict:

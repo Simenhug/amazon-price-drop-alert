@@ -139,10 +139,23 @@ class PriceDataProcessor:
 
         return rows
 
-    def plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, plt.Figure]:
+    def plot_price_graphs(self, price_drops: list[PriceDropDTO]) -> dict[str, str]:
         """
-        takes in list of price data, returns pyplot figures for each product
+        Takes in a list of PriceDropDTOs, generates pyplot figures for each product,
+        and saves them as image files.
+        :param price_drops: list of PriceDropDTOs
+        :return: A dictionary mapping product IDs to file paths of the saved images.
+        """
+        product_ids = [price_drop.product_id for price_drop in price_drops]
+        historical_prices = self.query_historical_prices(product_ids)
+        return self._plot_price_graphs(historical_prices)
+
+    def _plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, str]:
+        """
+        Takes in a list of price data for multiple products, generates pyplot figures for each product,
+        and saves them as image files.
         :param data: list of dictionaries like [{'product_id': '123abc', 'date': '2025-02-23 00:00:00.000', 'price': '149.99'}]
+        :return: A dictionary mapping product IDs to file paths of the saved images.
         """
         # Convert input data to DataFrame
         df = pd.DataFrame(data)
@@ -152,7 +165,7 @@ class PriceDataProcessor:
         # Group data by product_id
         product_groups = df.groupby("product_id")
 
-        graphs = {}
+        image_paths = {}
 
         for product_id, group in product_groups:
             # Sort by date
@@ -178,28 +191,93 @@ class PriceDataProcessor:
             ax.set_title(f"Price Trend for {product.product_name}")
             ax.tick_params(axis="x", rotation=45)
             ax.grid(True)
-            plt.show()
 
-            graphs[product_id] = fig
+            # Save the figure as an image
+            image_path = f"/tmp/{product_id}_price_trend.png"
+            fig.savefig(image_path, format="png", dpi=300)
+            plt.close(fig)  # Close the figure to free memory
 
-        return graphs
+            # Store the image path
+            image_paths[product_id] = image_path
+
+        return image_paths
+
+
+class PriceDataProcessorTestingTool:
+    """
+    A testing tool for PriceDataProcessor.
+    """
+
+    def __init__(self):
+        self.data_processor = PriceDataProcessor()
+
+    def test_plot_price_graphs(self):
+        data = [
+            {
+                "product_id": "280e749b8ced667c",
+                "date": "2025-02-23 00:00:00.000",
+                "price": "149.99",
+            },
+            {
+                "product_id": "280e749b8ced667c",
+                "date": "2025-02-22 00:00:00.000",
+                "price": "159.99",
+            },
+            {
+                "product_id": "280e749b8ced667c",
+                "date": "2025-02-21 00:00:00.000",
+                "price": "169.99",
+            },
+            {
+                "product_id": "280e749b8ced667c",
+                "date": "2025-02-20 00:00:00.000",
+                "price": "179.99",
+            },
+            {
+                "product_id": "280e749b8ced667c",
+                "date": "2025-02-19 00:00:00.000",
+                "price": "189.99",
+            },
+            {
+                "product_id": "5bc4c45f96482a43",
+                "date": "2025-02-23 00:00:00.000",
+                "price": "299.99",
+            },
+            {
+                "product_id": "5bc4c45f96482a43",
+                "date": "2025-02-22 00:00:00.000",
+                "price": "309.99",
+            },
+            {
+                "product_id": "5bc4c45f96482a43",
+                "date": "2025-02-21 00:00:00.000",
+                "price": "319.99",
+            },
+            {
+                "product_id": "5bc4c45f96482a43",
+                "date": "2025-02-20 00:00:00.000",
+                "price": "329.99",
+            },
+            {
+                "product_id": "5bc4c45f96482a43",
+                "date": "2025-02-19 00:00:00.000",
+                "price": "339.99",
+            },
+        ]
+        graphs = self.data_processor._plot_price_graphs(data)
+        print(graphs)
+
+    def test_check_price_drops_and_plot_graphs(self):
+        price_drops = self.data_processor.check_price_drops()
+        print(price_drops)
+        if not price_drops:
+            print("\nNo price drops detected.")
+            return
+        graphs = self.data_processor.plot_price_graphs(price_drops)
+        print(graphs)
 
 
 # just for testing
 if __name__ == "__main__":
-    processor = PriceDataProcessor()
-    product_ids = ["280e749b8ced667c", "5bc4c45f96482a43"]
-    # print(processor.query_historical_prices(product_ids))
-    data = [
-        {
-            "product_id": "280e749b8ced667c",
-            "date": "2025-02-23 00:00:00.000",
-            "price": "149.99",
-        },
-        {
-            "product_id": "5bc4c45f96482a43",
-            "date": "2025-02-23 00:00:00.000",
-            "price": "299.99",
-        },
-    ]
-    processor.plot_price_graphs(data)
+    test = PriceDataProcessorTestingTool()
+    test.test_check_price_drops_and_plot_graphs()
