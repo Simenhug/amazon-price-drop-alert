@@ -89,11 +89,3 @@ in project root directory, run:
 ```sh
 python -m app.s3_data_handler
 ```
-
-## Dependency trimming
-If requirements.txt grows too large, deployment will fail because AWS Lambda allows up to 70MB of deployment package (the zip file). 
-very often there are dependencies in requirements.txt that are no longer needed. To detect and trim unused dependencies, do:
-`pipreqs . --force`
-this will generate a new, minial requirements.txt
-
-Another (better) solution is to put dependencies in Lambda Layers.
