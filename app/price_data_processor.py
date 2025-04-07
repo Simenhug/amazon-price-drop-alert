@@ -1,12 +1,6 @@
-import os
-import sys
-
-# Check if running in AWS Lambda (AWS_LAMBDA_FUNCTION_NAME is set in Lambda runtime)
-if "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
-    sys.path.append("/opt/python")
-
 import time
 from dataclasses import dataclass
+from typing import Optional
 
 import boto3
 import matplotlib.pyplot as plt
@@ -22,6 +16,7 @@ class PriceDropDTO:
     product_id: str
     previous_price: str
     current_price: str
+    price_chart_path: Optional[str] = None
 
 
 # Athena constants
@@ -69,7 +64,7 @@ class PriceDataProcessor:
 
         return price_drops
 
-    def query_historical_prices(self, product_ids):
+    def query_historical_prices(self, product_ids) -> list[dict[str, str]]:
         """
         query all available historical prices for the given product_ids for the last 365 days
         returns a list of dictionaries, each dict contains product_id, date, and price
@@ -139,16 +134,19 @@ class PriceDataProcessor:
 
         return rows
 
-    def plot_price_graphs(self, price_drops: list[PriceDropDTO]) -> dict[str, str]:
+    def plot_price_graphs(self, price_drops: list[PriceDropDTO]) -> list[PriceDropDTO]:
         """
         Takes in a list of PriceDropDTOs, generates pyplot figures for each product,
-        and saves them as image files.
+        and saves them as image files. Update the PriceDropDTO with the file path of the saved image.
         :param price_drops: list of PriceDropDTOs
-        :return: A dictionary mapping product IDs to file paths of the saved images.
+        :return: PriceDropDTOs with updated price_chart_path
         """
         product_ids = [price_drop.product_id for price_drop in price_drops]
         historical_prices = self.query_historical_prices(product_ids)
-        return self._plot_price_graphs(historical_prices)
+        graphs = self._plot_price_graphs(historical_prices)
+        for price_drop in price_drops:
+            price_drop.price_chart_path = graphs.get(price_drop.product_id)
+        return price_drops
 
     def _plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, str]:
         """
@@ -183,7 +181,9 @@ class PriceDataProcessor:
             group.rename(columns={"index": "date"}, inplace=True)
 
             # Create figure and plot price graph
-            fig, ax = plt.subplots(figsize=(10, 5))
+            fig, ax = plt.subplots(
+                figsize=(6, 3)
+            )  # Adjusted figure size to make it smaller
             ax.plot(group["date"], group["price"], marker="o", linestyle="-")
             ax.set_xlabel("Date")
             ax.set_ylabel("Price")
@@ -192,9 +192,14 @@ class PriceDataProcessor:
             ax.tick_params(axis="x", rotation=45)
             ax.grid(True)
 
+            # Adjust layout to prevent x-axis labels from being cut off
+            fig.tight_layout()
+
             # Save the figure as an image
             image_path = f"/tmp/{product_id}_price_trend.png"
-            fig.savefig(image_path, format="png", dpi=300)
+            fig.savefig(
+                image_path, format="png", dpi=150
+            )  # Adjusted DPI for smaller file size
             plt.close(fig)  # Close the figure to free memory
 
             # Store the image path
@@ -273,11 +278,12 @@ class PriceDataProcessorTestingTool:
         if not price_drops:
             print("\nNo price drops detected.")
             return
-        graphs = self.data_processor.plot_price_graphs(price_drops)
-        print(graphs)
+        price_drop_dtos = self.data_processor.plot_price_graphs(price_drops)
+        print(price_drop_dtos)
 
 
 # just for testing
 if __name__ == "__main__":
     test = PriceDataProcessorTestingTool()
-    test.test_check_price_drops_and_plot_graphs()
+    # test.test_check_price_drops_and_plot_graphs()
+    test.test_plot_price_graphs()

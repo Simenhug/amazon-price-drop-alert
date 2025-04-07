@@ -1,10 +1,4 @@
 import os
-import sys
-
-# Check if running in AWS Lambda (AWS_LAMBDA_FUNCTION_NAME is set in Lambda runtime)
-if "AWS_LAMBDA_FUNCTION_NAME" in os.environ:
-    sys.path.append("/opt/python")
-
 import random
 import time
 
@@ -13,6 +7,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 from app.amazon_url_handler import AmazonURLProcessor
+from app.email_sender import send_email
 from app.price_data_processor import PriceDataProcessor
 from app.s3_data_handler import ProductDTO, S3DataHandler
 from app.utils import InsuffcientScraperAPIQuotaException
@@ -172,12 +167,22 @@ class AmazonPriceExtractor:
         if not price_drops:
             print("\nNo price drops detected.")
             return
-        # TODO: send email alerts with price chart images
+        price_drops = self.price_data_processor.plot_price_graphs(price_drops)
+
+        email = os.getenv("EMAIL")
+        send_email(
+            sender=email,
+            recipient=email,
+            subject="Price Drop Alert!",
+            price_drops=price_drops,
+        )
 
     def run(self, debug: bool = False):
         # scrape latest price for all watched products
         products = self.extract_price_for_all_registered_products(debug=debug)
         self.store_product_prices(products)
+        # check for any price drops and send email alerts if any
+        self.check_and_process_price_drops()
 
 
 # this is only for testing locally, not how workflow is triggered in production
