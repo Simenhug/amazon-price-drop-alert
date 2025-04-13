@@ -276,3 +276,34 @@ class S3DataHandler:
         if product:
             return product
         return self.get_products_with_ids([product_id])[product_id]
+
+    def interactive_product_registration(self):
+        """
+        Interactive method to register multiple products to the watch list.
+        This method prompts the user to enter product details and registers them one by one.
+        """
+        while True:
+            register_new = (
+                input(
+                    "Would you like to register another new product to the watch list? (Y/n): "
+                )
+                .strip()
+                .lower()
+            )
+            if register_new in ("", "y"):
+                product_name = input("Enter the product name: ").strip()
+                product_url = input("Enter the product URL (full URL): ").strip()
+                self.register_new_product(product_name, product_url)
+            elif register_new == "n":
+                print("Exiting the registration loop.")
+                break
+            else:
+                print(
+                    "Invalid input. Please enter 'Y' to register a new product or 'n' to exit."
+                )
+
+
+# to register a new product to the watch list
+if __name__ == "__main__":
+    processor = S3DataHandler()
+    processor.interactive_product_registration()
