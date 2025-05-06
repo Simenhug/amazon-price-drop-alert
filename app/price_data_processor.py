@@ -64,10 +64,35 @@ class PriceDataProcessor:
 
         return price_drops
 
+    def price_graph_for_past_year(self):
+        """
+        generate a price graph for the past year for all products and display them
+        """
+        products = self.s3_data_handler.list_registered_products()
+        product_ids = [product.product_id for product in products]
+        historical_prices = self.query_historical_prices(product_ids)
+        graphs = self._plot_price_graphs(historical_prices, return_graph=True)
+
+        # Import required modules outside the loop
+        from io import BytesIO
+
+        import matplotlib.image as mpimg
+        import matplotlib.pyplot as plt
+
+        # Display the graphs
+        for product_id, png_data in graphs.items():
+            # Create a figure to display the image
+            plt.figure(figsize=(8, 4))
+            img = mpimg.imread(BytesIO(png_data))
+            plt.imshow(img)
+            plt.axis("off")  # Hide axes
+            plt.show()
+
     def query_historical_prices(self, product_ids) -> list[dict[str, str]]:
         """
         query all available historical prices for the given product_ids for the last 365 days
-        returns a list of dictionaries, each dict contains product_id, date, and price
+
+        :return: a list of dictionaries, each dict contains product_id, date, and price
         like [{'product_id': '123abc', 'date': '2025-02-23 00:00:00.000', 'price': '149.99'}]
         """
         # Format product_ids for SQL query
@@ -148,12 +173,15 @@ class PriceDataProcessor:
             price_drop.price_chart_path = graphs.get(price_drop.product_id)
         return price_drops
 
-    def _plot_price_graphs(self, data: list[dict[str, str]]) -> dict[str, str]:
+    def _plot_price_graphs(
+        self, data: list[dict[str, str]], return_graph: bool = False
+    ) -> dict[str, str | bytes]:
         """
         Takes in a list of price data for multiple products, generates pyplot figures for each product,
         and saves them as image files.
         :param data: list of dictionaries like [{'product_id': '123abc', 'date': '2025-02-23 00:00:00.000', 'price': '149.99'}]
-        :return: A dictionary mapping product IDs to file paths of the saved images.
+        :param return_graph: if True, returns the graph data in PNG format instead of saving to file
+        :return: A dictionary mapping product IDs to file paths (str) or PNG data (bytes) if return_graph is True
         """
         # Convert input data to DataFrame
         df = pd.DataFrame(data)
@@ -195,15 +223,23 @@ class PriceDataProcessor:
             # Adjust layout to prevent x-axis labels from being cut off
             fig.tight_layout()
 
-            # Save the figure as an image
-            image_path = f"/tmp/{product_id}_price_trend.png"
-            fig.savefig(
-                image_path, format="png", dpi=150
-            )  # Adjusted DPI for smaller file size
-            plt.close(fig)  # Close the figure to free memory
+            if return_graph:
+                # Return the graph as PNG data
+                import io
 
-            # Store the image path
-            image_paths[product_id] = image_path
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", dpi=150)
+                buf.seek(0)
+                image_paths[product_id] = buf.getvalue()
+            else:
+                # Save the figure as an image
+                image_path = f"/tmp/{product_id}_price_trend.png"
+                fig.savefig(
+                    image_path, format="png", dpi=150
+                )  # Adjusted DPI for smaller file size
+                image_paths[product_id] = image_path
+
+            plt.close(fig)  # Close the figure to free memory
 
         return image_paths
 
@@ -281,9 +317,13 @@ class PriceDataProcessorTestingTool:
         price_drop_dtos = self.data_processor.plot_price_graphs(price_drops)
         print(price_drop_dtos)
 
+    def test_price_graph_for_past_year(self):
+        self.data_processor.price_graph_for_past_year()
+
 
 # just for testing
 if __name__ == "__main__":
     test = PriceDataProcessorTestingTool()
     # test.test_check_price_drops_and_plot_graphs()
-    test.test_plot_price_graphs()
+    # test.test_plot_price_graphs()
+    test.test_price_graph_for_past_year()

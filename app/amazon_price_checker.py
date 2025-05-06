@@ -120,10 +120,10 @@ class AmazonPriceExtractor:
                 print(product.product_name)
         for product in products:
             try:
-                if debug:
-                    print(
-                        f"\nExtracting price for {product.product_name} with {product.url}"
-                    )
+
+                print(
+                    f"\nExtracting price for {product.product_name} with {product.url}"
+                )
                 # Random Delay to Avoid Detection
                 time.sleep(random.uniform(6, 10))
                 human_like_url = self.url_handler.generate_human_like_amazon_url(
