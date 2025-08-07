@@ -5,6 +5,7 @@ import time
 class RetryOnException:
     def __init__(self, exception=Exception, retries=3, delay=1):
         """
+        DEPRECATED:
         :param exception: The exception to catch and retry
         :param retries: Number of times to retry before failing
         :param delay: Seconds to wait between retries

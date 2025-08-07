@@ -157,32 +157,31 @@ class AmazonPriceExtractor:
     def store_product_prices(self, products: list[ProductDTO]) -> None:
         self.s3_data_handler.store_prices(products)
 
-    def check_and_process_price_drops(self):
+    def process_and_send_email_report(self):
         """
-        check for any price drops
-        generate price charts for any products with price drops
-        send email alerts with price chart images
+        Always send email report with all products and their price graphs
+        Emphasize any price drops if they exist
         """
-        price_drops = self.price_data_processor.check_price_drops()
-        if not price_drops:
-            print("\nNo price drops detected.")
-            return
-        price_drops = self.price_data_processor.plot_price_graphs(price_drops)
+        product_summaries = self.price_data_processor.create_product_summary()
 
         email = os.getenv("EMAIL")
+        subject = "Amazon Price Watch Report"
+        if any(p.has_price_drop for p in product_summaries):
+            subject = "🚨 Price Drop Alert! - Amazon Price Watch Report"
+
         send_email(
             sender=email,
             recipient=email,
-            subject="Price Drop Alert!",
-            price_drops=price_drops,
+            subject=subject,
+            product_summaries=product_summaries,
         )
 
     def run(self, debug: bool = False):
         # scrape latest price for all watched products
         products = self.extract_price_for_all_registered_products(debug=debug)
         self.store_product_prices(products)
-        # check for any price drops and send email alerts if any
-        self.check_and_process_price_drops()
+        # Always send email report with all products and their price graphs
+        self.process_and_send_email_report()
 
 
 # this is only for testing locally, not how workflow is triggered in production

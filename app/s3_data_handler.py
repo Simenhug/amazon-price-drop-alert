@@ -257,7 +257,7 @@ class S3DataHandler:
 
     def get_two_most_recent_price_files(self):
         """
-        Get the two most recent price files from S3
+        DEPRECATED: Get the two most recent price files from S3
         """
         files = self.s3_client.list_objects_v2(Bucket=S3_BUCKET_NAME)
         files = files["Contents"]

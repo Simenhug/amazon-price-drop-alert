@@ -13,7 +13,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from app.price_data_processor import PriceDataProcessor, PriceDropDTO
+from app.price_data_processor import PriceDataProcessor, ProductSummaryDTO
 
 # Define Gmail API Scopes
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
@@ -86,33 +86,60 @@ def authenticate_gmail():
     return build("gmail", "v1", credentials=google_token)
 
 
-def create_email_with_price_drops(
-    sender, recipient, subject, price_drops: list[PriceDropDTO]
+def create_email_with_product_summary(
+    sender, recipient, subject, product_summaries: list[ProductSummaryDTO]
 ) -> dict[str, str]:
     """
-    Create an email message with HTML content and embedded images for price drops.
+    Create an email message with HTML content and embedded images for all products, emphasizing price drops.
     :param sender: Sender's email address
     :param recipient: Recipient's email address
     :param subject: Email subject
-    :param price_drops: List of PriceDropDTOs
+    :param product_summaries: List of ProductSummaryDTOs
     :return: Encoded email message
     """
     # Generate HTML content and collect image paths
-    html_content = "<html><body><h1>Hello!</h1><p>Here are price drops that you might be interested in:</p><ul>"
+    html_content = "<html><body><h1>Wishlist Price Watch Report</h1>"
+
+    # Check if there are any price drops
+    price_drops = [p for p in product_summaries if p.has_price_drop]
+    if price_drops:
+        html_content += "<h2 style='color: #e74c3c;'>🚨 Price Drops Detected!</h2>"
+        html_content += "<p>Here are the products with price drops:</p><ul>"
+        for product in price_drops:
+            html_content += (
+                f"<li style='margin-bottom: 15px;'>"
+                f"<strong><a href='{product.url}'>{product.product_name}</a></strong><br>"
+                f"<span style='color: #e74c3c;'>Previous Price: ${product.previous_price}</span><br>"
+                f"<span style='color: #27ae60; font-weight: bold;'>Current Price: ${product.current_price}</span><br>"
+            )
+            if product.price_chart_path:
+                image_name = os.path.basename(product.price_chart_path)
+                html_content += f"<img src='cid:{image_name}' alt='Price Chart' style='max-width: 100%; height: auto;'><br>"
+            html_content += "</li>"
+        html_content += "</ul>"
+
+    # Show all products
+    html_content += "<h2>All Watched Products</h2><ul>"
     image_paths = []
 
-    for drop in price_drops:
+    for product in product_summaries:
         html_content += (
-            f"<li>"
-            f"<a href='{drop.url}'>{drop.product_name}</a><br>"
-            f"Previous Price: {drop.previous_price}<br>"
-            f"Current Price: {drop.current_price}<br>"
+            f"<li style='margin-bottom: 15px;'>"
+            f"<strong><a href='{product.url}'>{product.product_name}</a></strong><br>"
         )
 
-        if drop.price_chart_path:
-            image_name = os.path.basename(drop.price_chart_path)
-            html_content += f"<img src='cid:{image_name}' alt='Price Chart'><br>"
-            image_paths.append(drop.price_chart_path)
+        if product.has_price_drop:
+            html_content += (
+                f"<span style='color: #e74c3c;'>Previous Price: ${product.previous_price}</span><br>"
+                f"<span style='color: #27ae60; font-weight: bold;'>Current Price: ${product.current_price}</span><br>"
+            )
+        else:
+            html_content += f"<span>Current Price: ${product.current_price}</span><br>"
+
+        if product.price_chart_path:
+            image_name = os.path.basename(product.price_chart_path)
+            html_content += f"<img src='cid:{image_name}' alt='Price Chart' style='max-width: 100%; height: auto;'><br>"
+            image_paths.append(product.price_chart_path)
 
         html_content += "</li>"
 
@@ -148,10 +175,12 @@ def create_email_with_price_drops(
     return {"raw": encoded_message}
 
 
-def send_email(sender, recipient, subject, price_drops: list[PriceDropDTO]):
+def send_email(sender, recipient, subject, product_summaries: list[ProductSummaryDTO]):
     """Send an email using Gmail API."""
     service = authenticate_gmail()
-    email = create_email_with_price_drops(sender, recipient, subject, price_drops)
+    email = create_email_with_product_summary(
+        sender, recipient, subject, product_summaries
+    )
     sent_message = service.users().messages().send(userId="me", body=email).execute()
     print(f"Email sent successfully! Message ID: {sent_message['id']}")
 
@@ -161,13 +190,12 @@ class EmailSenderTestingTool:
         """Test the send_email function."""
         email = os.getenv("EMAIL")
         price_data_processor = PriceDataProcessor()
-        price_drops = price_data_processor.check_price_drops()
-        price_drops = price_data_processor.plot_price_graphs(price_drops)
+        product_summaries = price_data_processor.create_product_summary()
         send_email(
             sender=email,
             recipient=email,
-            subject="Price Drop Alert!",
-            price_drops=price_drops,
+            subject="Wishlist Price Watch Report",
+            product_summaries=product_summaries,
         )
 
     def test_credentials(self):
@@ -178,6 +206,6 @@ class EmailSenderTestingTool:
 # for testing
 if __name__ == "__main__":
     load_dotenv()
+    generate_new_token()  # run this if token refresh fails on Lambda
     test = EmailSenderTestingTool()
     test.test_send_email()
-    # generate_new_token()  # run this if token refresh fails on Lambda

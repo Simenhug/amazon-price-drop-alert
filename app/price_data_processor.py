@@ -19,6 +19,17 @@ class PriceDropDTO:
     price_chart_path: Optional[str] = None
 
 
+@dataclass
+class ProductSummaryDTO:
+    product_name: str
+    url: str
+    product_id: str
+    current_price: str
+    price_chart_path: Optional[str] = None
+    has_price_drop: bool = False
+    previous_price: Optional[str] = None
+
+
 # Athena constants
 DATABASE = "amazon_products_historical_prices"
 PRICE_TABLE_NAME = "amazon_products_historical_prices"
@@ -33,7 +44,7 @@ class PriceDataProcessor:
 
     def check_price_drops(self) -> list[PriceDropDTO]:
         """
-        retrieves the two most recent price files from S3, check for any price drops, and returns a list of PriceDropDTOs
+        DEPRECATED: retrieves the two most recent price files from S3, check for any price drops, and returns a list of PriceDropDTOs
         """
         previous_prices, current_prices = (
             self.s3_data_handler.get_two_most_recent_prices()
@@ -63,6 +74,36 @@ class PriceDataProcessor:
             price_drops.append(price_drop_dto)
 
         return price_drops
+
+    def get_all_products_with_current_prices(self) -> list[ProductSummaryDTO]:
+        """
+        Get all registered products with their current prices
+        """
+        previous_prices, current_prices = (
+            self.s3_data_handler.get_two_most_recent_prices()
+        )
+        all_products = self.s3_data_handler.list_registered_products()
+        product_summaries = []
+
+        for product in all_products:
+            current_price = current_prices.get(product.product_id, "N/A")
+            previous_price = previous_prices.get(product.product_id)
+            has_price_drop = False
+
+            if previous_price and current_price != "N/A":
+                has_price_drop = float(current_price) < float(previous_price)
+
+            product_summary = ProductSummaryDTO(
+                product_name=product.product_name,
+                url=product.url,
+                product_id=product.product_id,
+                current_price=current_price,
+                has_price_drop=has_price_drop,
+                previous_price=previous_price,
+            )
+            product_summaries.append(product_summary)
+
+        return product_summaries
 
     def price_graph_for_past_year(self):
         """
@@ -161,10 +202,10 @@ class PriceDataProcessor:
 
     def plot_price_graphs(self, price_drops: list[PriceDropDTO]) -> list[PriceDropDTO]:
         """
-        Takes in a list of PriceDropDTOs, generates pyplot figures for each product,
+        DEPRECATED: Takes in a list of PriceDropDTOs, generates pyplot figures for each product,
         and saves them as image files. Update the PriceDropDTO with the file path of the saved image.
         :param price_drops: list of PriceDropDTOs
-        :return: PriceDropDTOs with updated price_chart_path
+        :return: PriceDropDTOs with updated price_chart_path (DEPRECATED)
         """
         product_ids = [price_drop.product_id for price_drop in price_drops]
         historical_prices = self.query_historical_prices(product_ids)
@@ -172,6 +213,34 @@ class PriceDataProcessor:
         for price_drop in price_drops:
             price_drop.price_chart_path = graphs.get(price_drop.product_id)
         return price_drops
+
+    def generate_price_graphs_for_products(
+        self, products: list[ProductSummaryDTO]
+    ) -> list[ProductSummaryDTO]:
+        """
+        Generate price graphs for any list of products
+        :param products: list of ProductSummaryDTOs
+        :return: ProductSummaryDTOs with updated price_chart_path
+        """
+        product_ids = [product.product_id for product in products]
+        historical_prices = self.query_historical_prices(product_ids)
+        graphs = self._plot_price_graphs(historical_prices)
+        for product in products:
+            product.price_chart_path = graphs.get(product.product_id)
+        return products
+
+    def create_product_summary(self) -> list[ProductSummaryDTO]:
+        """
+        Create summary data for email with price drops emphasized
+        """
+        all_products = self.get_all_products_with_current_prices()
+        # Generate price graphs for all products
+        all_products_with_graphs = self.generate_price_graphs_for_products(all_products)
+        # Sort products with price drops first
+        all_products_with_graphs.sort(
+            key=lambda x: (not x.has_price_drop, x.product_name)
+        )
+        return all_products_with_graphs
 
     def _plot_price_graphs(
         self, data: list[dict[str, str]], return_graph: bool = False
@@ -309,13 +378,14 @@ class PriceDataProcessorTestingTool:
         print(graphs)
 
     def test_check_price_drops_and_plot_graphs(self):
-        price_drops = self.data_processor.check_price_drops()
-        print(price_drops)
-        if not price_drops:
-            print("\nNo price drops detected.")
-            return
-        price_drop_dtos = self.data_processor.plot_price_graphs(price_drops)
-        print(price_drop_dtos)
+        product_summaries = self.data_processor.create_product_summary()
+        print(f"Found {len(product_summaries)} products in watchlist")
+        price_drops = [p for p in product_summaries if p.has_price_drop]
+        print(f"Found {len(price_drops)} products with price drops")
+        for product in product_summaries:
+            print(
+                f"Product: {product.product_name}, Current Price: ${product.current_price}, Has Price Drop: {product.has_price_drop}"
+            )
 
     def test_price_graph_for_past_year(self):
         self.data_processor.price_graph_for_past_year()
