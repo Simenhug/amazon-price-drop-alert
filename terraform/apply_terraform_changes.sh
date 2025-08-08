@@ -1,5 +1,5 @@
 #!/bin/bash
-# run ./terraform/apply_permissions.sh to apply any terraform changes
+# run ./terraform/apply_terraform_changes.sh to apply any terraform changes
 
 echo "🔧 Applying Terraform changes..."
 
