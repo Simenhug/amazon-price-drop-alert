@@ -84,8 +84,15 @@ terraform plan # every time you make a change to a terraform file
 terraform apply -auto-approve # every time you make a change to a terraform file
 ```
 
-## Add an Amazon product to the price drop watchlist
+## Add or archive an Amazon product to the price drop watchlist
 in project root directory, run:
 ```sh
 python -m app.s3_data_handler
 ```
+
+## Renew Google token
+if email sending failed due to expired google authentication token, run:
+```sh
+python -m app.email_sender
+```
+which calls `generate_new_token` and should request a new google credentials token.
