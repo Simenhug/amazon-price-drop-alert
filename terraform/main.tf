@@ -59,8 +59,7 @@ resource "aws_iam_policy" "lambda_services_policy" {
           "s3:ListBucketMultipartUploads",
           "s3:ListMultipartUploadParts",
           "s3:AbortMultipartUpload",
-          "s3:PutObject",
-          "s3:UploadFile"
+          "s3:PutObject"
         ]
         Resource = [
           "arn:aws:s3:::aws-athena-query-results-*",
@@ -115,24 +114,4 @@ resource "aws_lambda_permission" "allow_eventbridge" {
   source_arn    = aws_cloudwatch_event_rule.lambda_schedule.arn
 }
 
-# 🔹 Update Lambda Function to use the new execution role
-resource "aws_lambda_function" "updated_lambda" {
-  function_name = data.aws_lambda_function.existing_lambda.function_name
-  role          = aws_iam_role.lambda_execution_role.arn
-  
-  # Keep existing configuration
-  filename         = data.aws_lambda_function.existing_lambda.filename
-  source_code_hash = data.aws_lambda_function.existing_lambda.source_code_hash
-  runtime          = data.aws_lambda_function.existing_lambda.runtime
-  handler          = data.aws_lambda_function.existing_lambda.handler
-  timeout          = data.aws_lambda_function.existing_lambda.timeout
-  memory_size      = data.aws_lambda_function.existing_lambda.memory_size
-  
-  # Preserve environment variables if they exist
-  dynamic "environment" {
-    for_each = data.aws_lambda_function.existing_lambda.environment
-    content {
-      variables = environment.value.variables
-    }
-  }
-}
+
